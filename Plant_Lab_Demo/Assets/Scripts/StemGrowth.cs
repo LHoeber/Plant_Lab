@@ -32,10 +32,12 @@ public class StemGrowth : MonoBehaviour// inheritance makes this class a compone
     [Header("Direction")]
     [Tooltip("Growth is biased toward this point. If empty, biased straight up.")]
     public Transform lightSource;
-    [Tooltip("How strongly each new segment turns toward the target (0..1).")]
-    [Range(0f, 1f)] public float directionBias = 0.1f;
-    [Tooltip("Std of the Gaussian perturbation added to each new segment direction.")]
-    [Range(0f, 1f)] public float perturbationStd = 0.15f;
+    [Tooltip("Turning rate toward the target, per unit of stem length. The remaining angle to the target " +
+             "shrinks by a factor exp(-directionBias * distance), independent of segmentLength.")]
+    [Range(0f, 10f)] public float directionBias = 1f;
+    [Tooltip("Direction noise per sqrt(unit of stem length). Per-segment std = perturbationStd * sqrt(segmentLength), " +
+             "so the wobble per unit length is independent of segmentLength (random walk of the direction).")]
+    [Range(0f, 2f)] public float perturbationStd = 0.5f;
 
     [Header("Shape")]
     [Range(0.001f, 0.2f)] public float maxRadius = 0.04f;//maximum radius reached further away from tip
@@ -49,12 +51,12 @@ public class StemGrowth : MonoBehaviour// inheritance makes this class a compone
     readonly List<Vector3> nodes = new List<Vector3>(); // committed nodes, local space, reference can't be changed
     Vector3 tipDir;          // direction of the segment currently growing
     float tipSegLen;         // length of the segment currently growing
-    float committedLength;   // total length of committed segments (cones that finished growing)
+    float committedLength;   // total length of committed segments (skeleton that finished growing)
     float accumulator;       // unconsumed real time * simSpeed
 
     // --- rendering ---
     Mesh mesh;
-    bool meshDirty;//buffer, to avoid newly allocating memory every frame 
+    bool meshDirty;//flag, that indicates if the mesh is out of date and needs rebuilding
     readonly List<Vector3> pts = new List<Vector3>();//storing center spline through the stem
     readonly List<Vector3> verts = new List<Vector3>();//3D corner points
                                                        //indices are given within i*stride+j
@@ -142,12 +144,20 @@ public class StemGrowth : MonoBehaviour// inheritance makes this class a compone
             //prevent normalization if plant reached almost exact light position
             if (d.sqrMagnitude > 1e-6f) toTarget = d.normalized;
         }
-        //spherical interpolation, so that next segment turns toward the light by factor directionBias
-        Vector3 biased = Vector3.Slerp(dir, toTarget, directionBias);
-        //to avoid stronger noise effect if segments are smaller, std could be scaled by sqrt(segmentLength)
-        Vector3 noise = new Vector3(Gaussian(), Gaussian(), Gaussian()) * perturbationStd;
+        //spherical interpolation toward the light. The per-segment fraction 1 - exp(-k*L) compounds to
+        //exp(-k*distance) over any distance, so the bending per unit length doesn't depend on segmentLength
+        //the longer the segment, the more it turns
+        //the shorter the segment, the less it turns, so turning angles don't accumulate too fast
+        float turnFraction = 1f - Mathf.Exp(-directionBias * segmentLength);
+        Vector3 biased = Vector3.Slerp(dir, toTarget, turnFraction);
+        //variances of independent steps add up, so std per segment scales with sqrt(segmentLength)
+        //total variance is independent from L this way, because: (D/L)*sigma^2*sqrt(L)^2 = D*sigma^2
+        // -> (D/L)... number of segments for total length D and segment length L
+        // -> variance accumulates over total distance
+        float segmentStd = perturbationStd * Mathf.Sqrt(segmentLength);
+        Vector3 noise = new Vector3(Gaussian(), Gaussian(), Gaussian()) * segmentStd;
         Vector3 result = biased + noise;
-        return result.sqrMagnitude > 1e-6f ? result.normalized : dir;//again check if directly "inside" light
+        return result.sqrMagnitude > 1e-6f ? result.normalized : dir;//check if noise canceled out the direction
     }
 
     /// <summary>Standard normal sample via Box-Muller, from the seeded RNG.</summary>
@@ -183,48 +193,71 @@ public class StemGrowth : MonoBehaviour// inheritance makes this class a compone
         for (int i = 1; i < n; i++) arc.Add(arc[i - 1] + Vector3.Distance(pts[i - 1], pts[i]));
         float total = arc[n - 1];//total length as cumulative distance of nodes
 
-        // Parallel-transport frames so the tube doesn't twist/normals used to draw the rings aren't flipped
-        Vector3 prevT = (pts[1] - pts[0]).normalized;//initialize at base, which doesn't change anymore
+        // Parallel-transport frames so the tube doesn't twist
+        //normal at base is used as reference and changed as little as possible, as the plant grows
+        Vector3 prevT = (pts[1] - pts[0]).normalized;
         //normal is chosen arbitrary between growing direction and either up, or right pointing vector(if growing direction itself is currently up)
+        //but once it's chosen it's fixed
         Vector3 normal = Vector3.Cross(prevT, Mathf.Abs(prevT.y) < 0.99f ? Vector3.up : Vector3.right).normalized;
 
+        //placing a ring of vertices around every point along the stem skeleton
+        //makes sure cylinders transition smoothly over to one another, instead of having sticking-out edges of cylinders
         for (int i = 0; i < n; i++)
         {
-            Vector3 t = i == 0 ? pts[1] - pts[0]//starting vector at stem base
-                      : i == n - 1 ? pts[n - 1] - pts[n - 2]//last segment in stem
-                      : pts[i + 1] - pts[i - 1];//any other segment inbetween
+            Vector3 t = i == 0 ? pts[1] - pts[0]//forward-looking vector
+                      : i == n - 1 ? pts[n - 1] - pts[n - 2]//backward-looking vector
+                      : pts[i + 1] - pts[i - 1];//vector from previous to next point, jumping current point
             t.Normalize();
+            //take smallest rotation from previous to current t and change the normal by it
+            //this makes sure indices of vertices in consecutive rings keep parallel, not twist
             if (i > 0) normal = Quaternion.FromToRotation(prevT, t) * normal;
             prevT = t;
             //gives the third normal vector, that completes the 3D reference grid around a segment
+            //always chosen left-handed, so direction doesn't flip
             Vector3 binormal = Vector3.Cross(t, normal);
 
             float radius = Mathf.Min(maxRadius, taper * (total - arc[i]));
+            //vertices along one ring +1, because ring needs to get closed
             for (int j = 0; j <= radialSegments; j++)
             {
-                float a = (float)j / radialSegments * Mathf.PI * 2f;
+                float a = (float)j / radialSegments * Mathf.PI * 2f;//position around circumference of unit circle
+                //finding xyz coords of point in the plane that goes through the circle, normal to growing direction t
                 Vector3 offset = Mathf.Cos(a) * normal + Mathf.Sin(a) * binormal;
-                verts.Add(pts[i] + offset * radius);
-                norms.Add(offset);
+                verts.Add(pts[i] + offset * radius);//local coords of circle vertex relative to plant origin
+                norms.Add(offset);//vector pointing from node to circle vertex
                 uvs.Add(new Vector2((float)j / radialSegments, arc[i]));
             }
         }
 
+        //connecting neighboring rings via triangles
         for (int i = 0; i < n - 1; i++)
         {
             for (int j = 0; j < radialSegments; j++)
             {
-                int a = i * stride + j;
-                int b = a + stride;
-                tris.Add(a); tris.Add(a + 1); tris.Add(b);
-                tris.Add(a + 1); tris.Add(b + 1); tris.Add(b);
+                //ring i+1:   b ──────── b+1
+                //            │ ╲         │
+                //            │   ╲   ②  │
+                //            │ ①   ╲    │
+                //            │       ╲   │
+                //ring i:     a ──────── a+1
+                //
+                //① = (a, a+1, b)      ② = (a+1, b+1, b)
+                int a = i * stride + j;//index part of lower ring
+                int b = a + stride;//index part of upper ring
+                tris.Add(a); tris.Add(a + 1); tris.Add(b);//left triangle
+                tris.Add(a + 1); tris.Add(b + 1); tris.Add(b);//right triangle
             }
         }
 
         mesh.SetVertices(verts);
         mesh.SetNormals(norms);
         mesh.SetUVs(0, uvs);
-        mesh.SetTriangles(tris, 0);
-        mesh.RecalculateBounds();
+        mesh.SetTriangles(tris, 0);//also recalculates the bounds (calculateBounds defaults to true)
+    }
+
+    //meshes created with new Mesh() live on Unity's native side and aren't garbage collected
+    void OnDestroy()
+    {
+        if (mesh != null) Destroy(mesh);
     }
 }
