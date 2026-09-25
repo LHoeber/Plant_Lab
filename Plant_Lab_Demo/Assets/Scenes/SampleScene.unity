@@ -588,6 +588,18 @@ MonoBehaviour:
   maxRadius: 0.112
   taper: 0.026
   radialSegments: 5
+  leafPrefab: {fileID: 6210749114086206293, guid: 675e43d6d7aeb4be0a2371a5dddaa6f8, type: 3}
+  leafStartLength: 0.1
+  leafCheckInterval: 0.016
+  leafProbability: 0.338
+  phyllotaxisNoiseDeg: 10
+  leafGrowthDuration: 5
+  leafGrowthExponent: 0.5
+  maxLeafSize: 0.3
+  leafSizeFalloff: 0.2
+  minLeafSizeFraction: 0.3
+  leafSizeNoise: 0.15
+  leafElevationDeg: 35
 --- !u!23 &1244977171
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -613,7 +625,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 6617713976373881279, guid: a3023d67e462747eeae665cccecea129, type: 3}
+  - {fileID: 6617713976373881279, guid: 5c8f1ae6101ee4d4d8f35167a1b89c0c, type: 3}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
