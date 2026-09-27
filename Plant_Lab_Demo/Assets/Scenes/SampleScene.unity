@@ -557,7 +557,7 @@ GameObject:
   - component: {fileID: 1244977171}
   - component: {fileID: 1244977170}
   m_Layer: 0
-  m_Name: PlantStem
+  m_Name: Demo_Plant
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -575,33 +575,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 51238503d4454479e8cc0a97cb7a359f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::StemGrowth
+  settings: {fileID: 11400000, guid: 10c3f7548839044efa76674aa731338a, type: 2}
   seed: 70
-  deltaT: 0.05
+  lightSource: {fileID: 1044655172}
   simSpeed: 1
   regrow: 0
-  growthSpeed: 0.17
-  segmentLength: 0.283
-  maxLength: 4.18
-  lightSource: {fileID: 1044655172}
-  directionBias: 2.15
-  perturbationStd: 0.86
-  maxRadius: 0.112
-  taper: 0.026
-  radialSegments: 5
-  leafPrefabs:
-  - {fileID: 6210749114086206293, guid: 675e43d6d7aeb4be0a2371a5dddaa6f8, type: 3}
-  - {fileID: 5580250528726161927, guid: 7d43138547292429585075f106cb8c86, type: 3}
-  leafStartLength: 0.21
-  leafCheckInterval: 0.025
-  leafProbability: 0.338
-  phyllotaxisNoiseDeg: 10
-  leafGrowthDuration: 5
-  leafGrowthExponent: 0.5
-  maxLeafSize: 0.3
-  leafSizeFalloff: 0.2
-  minLeafSizeFraction: 0.3
-  leafSizeNoise: 0.15
-  leafElevationDeg: 16.5
 --- !u!23 &1244977171
 MeshRenderer:
   m_ObjectHideFlags: 0
