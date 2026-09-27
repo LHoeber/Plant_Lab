@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 5c8f1ae6101ee4d4d8f35167a1b89c0c
+guid: 5fc7b333eec9043cd9e5ab3dd77f1355
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
@@ -13,7 +13,7 @@ ModelImporter:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: stem_green
-    second: {fileID: 2100000, guid: 5a8b3f72f6fa24b4b9ae15fbe9d74fa0, type: 2}
+    second: {fileID: 2100000, guid: ed64d7231b2fa4f8084dba0e2df1fe2b, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
@@ -52,8 +52,8 @@ ModelImporter:
     importPhysicalCameras: 1
     importVisibility: 1
     importBlendShapes: 1
-    importCameras: 0
-    importLights: 0
+    importCameras: 1
+    importLights: 1
     nodeNameCollisionStrategy: 1
     fileIdsGeneration: 2
     swapUVChannels: 0

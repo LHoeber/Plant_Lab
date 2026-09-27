@@ -575,12 +575,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 51238503d4454479e8cc0a97cb7a359f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::StemGrowth
-  seed: 42
+  seed: 70
   deltaT: 0.05
-  simSpeed: 3.7
+  simSpeed: 1
   regrow: 0
   growthSpeed: 0.17
-  segmentLength: 0.351
+  segmentLength: 0.283
   maxLength: 4.18
   lightSource: {fileID: 1044655172}
   directionBias: 2.15
@@ -588,9 +588,11 @@ MonoBehaviour:
   maxRadius: 0.112
   taper: 0.026
   radialSegments: 5
-  leafPrefab: {fileID: 6210749114086206293, guid: 675e43d6d7aeb4be0a2371a5dddaa6f8, type: 3}
-  leafStartLength: 0.1
-  leafCheckInterval: 0.016
+  leafPrefabs:
+  - {fileID: 6210749114086206293, guid: 675e43d6d7aeb4be0a2371a5dddaa6f8, type: 3}
+  - {fileID: 5580250528726161927, guid: 7d43138547292429585075f106cb8c86, type: 3}
+  leafStartLength: 0.21
+  leafCheckInterval: 0.025
   leafProbability: 0.338
   phyllotaxisNoiseDeg: 10
   leafGrowthDuration: 5
@@ -599,7 +601,7 @@ MonoBehaviour:
   leafSizeFalloff: 0.2
   minLeafSizeFraction: 0.3
   leafSizeNoise: 0.15
-  leafElevationDeg: 35
+  leafElevationDeg: 16.5
 --- !u!23 &1244977171
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -625,7 +627,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 6617713976373881279, guid: 5c8f1ae6101ee4d4d8f35167a1b89c0c, type: 3}
+  - {fileID: 2100000, guid: 5a8b3f72f6fa24b4b9ae15fbe9d74fa0, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

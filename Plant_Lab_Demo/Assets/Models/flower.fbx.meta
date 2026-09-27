@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 5c8f1ae6101ee4d4d8f35167a1b89c0c
+guid: 8659758dd52cc4a5aa4ab75397351782
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
@@ -7,13 +7,18 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: leaf_green
-    second: {fileID: 2100000, guid: ed64d7231b2fa4f8084dba0e2df1fe2b, type: 2}
+      name: Material
+    second: {fileID: 2100000, guid: 0e59d2e15e7a7415f8297755c560c3d2, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: stem_green
-    second: {fileID: 2100000, guid: 5a8b3f72f6fa24b4b9ae15fbe9d74fa0, type: 2}
+      name: Material.002
+    second: {fileID: 2100000, guid: cfa1ead8681584a86a7a11d288bf49a9, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: leaf_green
+    second: {fileID: 2100000, guid: ed64d7231b2fa4f8084dba0e2df1fe2b, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
@@ -52,8 +57,8 @@ ModelImporter:
     importPhysicalCameras: 1
     importVisibility: 1
     importBlendShapes: 1
-    importCameras: 0
-    importLights: 0
+    importCameras: 1
+    importLights: 1
     nodeNameCollisionStrategy: 1
     fileIdsGeneration: 2
     swapUVChannels: 0

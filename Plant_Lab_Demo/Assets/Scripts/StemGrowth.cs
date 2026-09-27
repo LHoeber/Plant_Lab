@@ -47,9 +47,9 @@ public class StemGrowth : MonoBehaviour// inheritance makes this class a compone
     [Range(3, 24)] public int radialSegments = 8;
 
     [Header("Leaves: spawning")]
-    [Tooltip("Prefab instantiated for each leaf. Its origin must be the leaf's attachment point, " +
-             "blade pointing along local +Z, upper leaf surface facing local +Y.")]
-    public GameObject leafPrefab;
+    [Tooltip("Leaf variants; each new leaf picks one at random (equal chance). Each prefab's origin must be the " +
+             "leaf's attachment point, blade pointing along local +Z, upper leaf surface facing local +Y.")]
+    public GameObject[] leafPrefabs;
     [Tooltip("No leaves below this stem length (measured along the stem from the base).")]
     [Range(0f, 2f)] public float leafStartLength = 0.1f;
     [Tooltip("Stem length between two leaf spawn checks.")]
@@ -86,12 +86,13 @@ public class StemGrowth : MonoBehaviour// inheritance makes this class a compone
         public Vector3 outward;   //direction from the center line toward the leaf, perpendicular to tangent
         public float birthTime;   //sim time the leaf spawned
         public float sizeFactor;  //random per-leaf size multiplier, drawn once at spawn
+        public int variant;       //index into leafPrefabs, drawn once at spawn
         public Transform visual;
     }
 
     // --- simulation state ---
     System.Random rng;//local random seed instead of the global UnityEngine.Random
-    System.Random leafRng;//separate stream, so changing leaf parameters doesn't change the stem's shape
+    System.Random leafRng;//separate stream, so it doesn't use up different random numbers from the stem, if leaves spawn slower or faster
     float simTime;           // sim seconds since the last reset
     Vector3 tipNormal;       // parallel-transported reference axis perpendicular to tipDir (for leaf angles)
     float nextLeafCheck;     // stem length at which the next leaf spawn check happens
@@ -131,7 +132,7 @@ public class StemGrowth : MonoBehaviour// inheritance makes this class a compone
     public void ResetPlant()//the only difference is that this directly calls the function, unlike regrow, that only leads to the function call down the line
     {
         rng = new System.Random(seed);
-        leafRng = new System.Random(unchecked(seed * 486187739 + 1));//different, but still seed-determined stream
+        leafRng = new System.Random(unchecked(seed * 486187739 + 1));//different, but still seed-determined stream, overflow protected
         nodes.Clear();
         nodes.Add(Vector3.zero);
         tipDir = Vector3.up;
@@ -194,21 +195,25 @@ public class StemGrowth : MonoBehaviour// inheritance makes this class a compone
         while (true)
         {
             float nodeAt = committedLength + segmentLength;
-            if (nextLeafCheck <= TotalLength && nextLeafCheck <= nodeAt)
+            if (nextLeafCheck <= TotalLength && nextLeafCheck <= nodeAt)//try to spawn leaf
+            //needs to happen first, because at the same time a new semgent could be reached,
+            //but the leaf needs to still take the old segment's orientation
             {
                 //the check position lies on the current tip segment
                 TrySpawnLeaf(nextLeafCheck);
                 nextLeafCheck += leafCheckInterval;
             }
-            else if (nodeAt <= TotalLength)
+            else if (nodeAt <= TotalLength)//start new segment
             {
                 //if the segment length is reached, freeze that part and choose new direction
                 nodes.Add(nodes[nodes.Count - 1] + tipDir * segmentLength);
                 committedLength += segmentLength;
-                tipSegLen -= segmentLength;//remove already committed part
+                tipSegLen -= segmentLength;//remove already committed part, before tip continues growing
                 Vector3 newDir = NextDirection(tipDir);
                 //carry the reference axis along with the stem (parallel transport, like in BuildMesh),
                 //then remove tiny floating point drift so it stays exactly perpendicular and unit length
+                //also ensures the leaf's spawing angle relative to the last one stays consistent
+                //normally the Quaternion would be enough, but this ensures to remove tiny errors -> guaranteed right angle and length =1
                 tipNormal = Vector3.ProjectOnPlane(Quaternion.FromToRotation(tipDir, newDir) * tipNormal, newDir).normalized;
                 tipDir = newDir;
             }
@@ -224,7 +229,7 @@ public class StemGrowth : MonoBehaviour// inheritance makes this class a compone
         //golden angle between successive leaves, plus noise
         phyllotaxisAngle += GoldenAngleDeg + Gaussian(leafRng) * phyllotaxisNoiseDeg;
         float a = phyllotaxisAngle * Mathf.Deg2Rad;
-        Vector3 binormal = Vector3.Cross(tipDir, tipNormal);
+        Vector3 binormal = Vector3.Cross(tipDir, tipNormal);//to get a defined plane to spawn in
 
         var leaf = new Leaf
         {
@@ -235,11 +240,18 @@ public class StemGrowth : MonoBehaviour// inheritance makes this class a compone
             birthTime = simTime,
             sizeFactor = Mathf.Max(0.1f, 1f + Gaussian(leafRng) * leafSizeNoise),
         };
-        if (leafPrefab != null)
+        //exactly one draw per leaf, whatever the number of variants,
+        //so adding or removing a variant doesn't shift the random numbers of later leaves
+        double u = leafRng.NextDouble();
+        int count = leafPrefabs != null ? leafPrefabs.Length : 0;
+        leaf.variant = count > 0 ? Mathf.Min((int)(u * count), count - 1) : -1;//u in [0,1) -> index 0..count-1
+        GameObject prefab = count > 0 ? leafPrefabs[leaf.variant] : null;
+        if (prefab != null)//a slot in the array can still be empty
         {
             //child of the plant, so localPosition/localRotation are in the same space as the nodes
-            leaf.visual = Instantiate(leafPrefab, transform).transform;
-            leaf.visual.localScale = Vector3.zero;
+            //uses copy of provided prefab
+            leaf.visual = Instantiate(prefab, transform).transform;
+            leaf.visual.localScale = Vector3.zero;//starting off invisibale ensures it doesn't flicker up in full size before rescaled
         }
         leaves.Add(leaf);
     }
