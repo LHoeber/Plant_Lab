@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a100951605744ab5a908f8be9ae55ef, type: 3}
+  m_Name: Demo_Plant_rand77
+  m_EditorClassIdentifier: Assembly-CSharp::PlantSettings
+  deltaT: 0.05
+  growthSpeed: 0.35015216
+  segmentLength: 0.049598515
+  segmentStretchFactor: 1.8936155
+  elongationTime: 1.2740293
+  maxLength: 6.2569203
+  directionBias: 0.10849103
+  directionBiasFalloffPerDepth: 0.099163905
+  perturbationStd: 0.52585065
+  maxRadius: 0.113214724
+  radiusDepthFactor: 0.6405656
+  radiusFalloffType: 2
+  radiusFalloff: 0.6038836
+  minRadiusFraction: 0.0764773
+  endRadiusFraction: 0.18754922
+  endTaperLength: 0.35716447
+  radialGrowthTime: 12.740674
+  radialSegments: 6
+  spawnStartFraction: 0.050664995
+  spawnCheckInterval: 0.05590308
+  spawnProbability: 0.4319363
+  leafProbabilityAtEnd: 0.39485776
+  leafEndBoostExponent: 1.9848424
+  phyllotaxisNoiseDeg: 11.549837
+  branchProbability: 0.47010627
+  branchStartFraction: 0.19801822
+  maxDepth: 6
+  branchElevationDeg: 35.25476
+  sideBranchMaxLength: 4.2990646
+  lengthFalloffType: 1
+  lengthFalloff: 0.21047531
+  minBranchLength: 0.11660723
+  leafPrefabs:
+  - {fileID: 6210749114086206293, guid: 675e43d6d7aeb4be0a2371a5dddaa6f8, type: 3}
+  - {fileID: 5580250528726161927, guid: 7d43138547292429585075f106cb8c86, type: 3}
+  leafGrowthDuration: 5.5747275
+  leafGrowthExponent: 0.6155905
+  maxLeafSize: 0.20657341
+  leafSizeFalloff: 0.04534418
+  minLeafSizeFraction: 0.4065428
+  leafSizeNoise: 0.124167524
+  leafElevationDeg: -15.065782
+  flowerPrefabs:
+  - {fileID: 4799451868281231511, guid: f991fc312701640c8a3e5cec039ce8f4, type: 3}
+  flowerProbability: 0.7
+  flowerDelay: 2
+  flowerOpenDuration: 8
+  flowerOpenExponent: 1
+  maxFlowerSize: 1
+  flowerSizeNoise: 0.1

@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a100951605744ab5a908f8be9ae55ef, type: 3}
+  m_Name: Demo_Plant_rand55
+  m_EditorClassIdentifier: Assembly-CSharp::PlantSettings
+  deltaT: 0.05
+  growthSpeed: 0.30992055
+  segmentLength: 0.13635659
+  segmentStretchFactor: 1.4813664
+  elongationTime: 2.8909683
+  maxLength: 6.4952264
+  directionBias: 2.1982188
+  directionBiasFalloffPerDepth: 0.13492616
+  perturbationStd: 0.3199089
+  maxRadius: 0.117632076
+  radiusDepthFactor: 0.6238525
+  radiusFalloffType: 2
+  radiusFalloff: 0.8526416
+  minRadiusFraction: 0.07250877
+  endRadiusFraction: 0.13701507
+  endTaperLength: 0.3320328
+  radialGrowthTime: 12.8760805
+  radialSegments: 6
+  spawnStartFraction: 0.19943719
+  spawnCheckInterval: 0.038914956
+  spawnProbability: 0.5694463
+  leafProbabilityAtEnd: 0.4255175
+  leafEndBoostExponent: 2.0870454
+  phyllotaxisNoiseDeg: 9.272487
+  branchProbability: 0.5856544
+  branchStartFraction: 0.10968431
+  maxDepth: 6
+  branchElevationDeg: 24.570103
+  sideBranchMaxLength: 3.6951356
+  lengthFalloffType: 1
+  lengthFalloff: 0.44856107
+  minBranchLength: 0.05676465
+  leafPrefabs:
+  - {fileID: 6210749114086206293, guid: 675e43d6d7aeb4be0a2371a5dddaa6f8, type: 3}
+  - {fileID: 5580250528726161927, guid: 7d43138547292429585075f106cb8c86, type: 3}
+  leafGrowthDuration: 11.023557
+  leafGrowthExponent: 0.6519834
+  maxLeafSize: 0.27257574
+  leafSizeFalloff: 0.42902339
+  minLeafSizeFraction: 0.29426017
+  leafSizeNoise: 0.19252728
+  leafElevationDeg: -26.05659
+  flowerPrefabs:
+  - {fileID: 4799451868281231511, guid: f991fc312701640c8a3e5cec039ce8f4, type: 3}
+  flowerProbability: 0.7
+  flowerDelay: 2
+  flowerOpenDuration: 8
+  flowerOpenExponent: 1
+  maxFlowerSize: 1
+  flowerSizeNoise: 0.1

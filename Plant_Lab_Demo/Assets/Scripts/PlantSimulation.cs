@@ -7,6 +7,9 @@ using UnityEngine;
 /// being drawn, e.g. to simulate many plants offline.
 /// Same settings + same seed + same light target => same plant.
 /// </summary>
+/// <summary>Global life phases of a plant, always in this order (Flowering and Fruiting can be skipped).</summary>
+public enum PlantPhase { Growing, Flowering, Fruiting, Withering, Dead }
+
 public class PlantSimulation
 {
     public const float GoldenAngleDeg = 137.50776f;// 360 * (1 - 1/phi)
@@ -15,7 +18,14 @@ public class PlantSimulation
     public readonly Branch Root;                                  //the main stem
     public readonly List<Branch> Branches = new List<Branch>();   //all branches, in creation order (parents before children)
     public readonly List<Leaf> Leaves = new List<Leaf>();         //all leaves, in creation order
+    public readonly List<Flower> Flowers = new List<Flower>();    //all flowers, in creation order
     public float SimTime { get; private set; }                   //sim seconds since the start
+    public PlantPhase Phase { get; private set; } = PlantPhase.Growing;
+    public float PhaseStartTime { get; private set; }            //sim time the current phase began
+    public float FloweringStartTime { get; private set; } = float.PositiveInfinity; //buds open from here on
+    public float FruitingStartTime { get; private set; } = float.PositiveInfinity;  //fruits develop from here on
+    public float WitherStartTime { get; private set; } = float.PositiveInfinity;    //the withering wave starts here
+    float witherMaxDistance = 1f;                                 //distance from the base of the farthest organ (wave start)
 
     /// <summary>Growth target in plant-local space; null = straight up. Set from outside (e.g. a light source).</summary>
     public Vector3? LightTarget;
@@ -41,9 +51,24 @@ public class PlantSimulation
     /// <summary>Distance from the plant base, fully elongated, of a branch's base.</summary>
     public float BaseFinalDistance(Branch b) => b.parent == null ? 0f : FinalDistance(b.parent, b.attachArcFresh);
 
-    /// <summary>Current radius of a point: approaches its maximum radius, fast at first, then slowing down.</summary>
+    /// <summary>Current radius of a point: approaches its target radius, fast at first, then slowing down.</summary>
     public float RadiusAt(Branch b, float arcFresh, float age) =>
-        Settings.MaxRadiusAt(FinalDistance(b, arcFresh), b.depth) * (1f - Mathf.Exp(-age / Settings.radialGrowthTime));
+        TargetRadius(b, arcFresh) * (1f - Mathf.Exp(-age / Settings.radialGrowthTime))
+        * Mathf.Lerp(1f, Settings.stemWitheredRadiusFraction, StemWither(b, arcFresh));//thinner while withering
+
+    /// <summary>
+    /// Radius a point eventually reaches: maximum radius from distance to base and branching level,
+    /// narrowed smoothly toward the branch's end, and never thicker than the parent where the branch is attached.
+    /// </summary>
+    public float TargetRadius(Branch b, float arcFresh)
+    {
+        PlantSettings s = Settings;
+        float remaining = Mathf.Max(0f, MaxLengthOf(b) - arcFresh * s.segmentStretchFactor);//final length left to the end
+        float f = s.endRadiusFraction;
+        float endTaper = f + (1f - f) * (1f - Mathf.Exp(-remaining / s.endTaperLength));
+        float r = s.MaxRadiusAt(FinalDistance(b, arcFresh), b.depth) * endTaper;
+        return b.parent == null ? r : Mathf.Min(r, TargetRadius(b.parent, b.attachArcFresh));
+    }
 
     /// <summary>Maximum length of a branch, fully elongated (from the current settings, so sliders act immediately).</summary>
     public float MaxLengthOf(Branch b) => b.depth == 0 ? Settings.maxLength : Settings.SideBranchLength(BaseFinalDistance(b));
@@ -55,15 +80,160 @@ public class PlantSimulation
     public bool Step(float dt)
     {
         SimTime += dt;//leaves keep aging and segments keep elongating even after all tips stopped
-        float dL = Settings.growthSpeed * dt;
-        //only branches that existed at the start of the step grow in it;
-        //branches spawned during this step start growing in the next one
-        int n = Branches.Count;
-        for (int i = 0; i < n; i++)
-            Branches[i].Grow(dL, MaxFreshLengthOf(Branches[i]), this);
+        if (Phase == PlantPhase.Growing)
+        {
+            //new tissue is only formed in the Growing phase
+            float dL = Settings.growthSpeed * dt;
+            //only branches that existed at the start of the step grow in it;
+            //branches spawned during this step start growing in the next one
+            int n = Branches.Count;
+            for (int i = 0; i < n; i++)
+                Branches[i].Grow(dL, MaxFreshLengthOf(Branches[i]), this);
+        }
         //positions and radii for the new sim time; creation order = parents before children
         foreach (Branch b in Branches) b.UpdateGeometry(this);
+        //finished tips whose bud delay has passed get their (one) flower check;
+        //no new buds after Flowering (they'd have no chance to open and set fruit)
+        if (Phase <= PlantPhase.Flowering)
+            foreach (Branch b in Branches)
+                if (b.finishTime >= 0f && !b.flowerDecided && SimTime - b.finishTime >= Settings.flowerDelay)
+                    FlowerCheck(b);
+        UpdatePhase();
         return true;
+    }
+
+    // --- phases ---
+
+    /// <summary>Moves on to the next phase when the current one is over.</summary>
+    void UpdatePhase()
+    {
+        PlantSettings s = Settings;
+        float inPhase = SimTime - PhaseStartTime;
+        switch (Phase)
+        {
+            case PlantPhase.Growing:
+                bool allFinished = true;
+                foreach (Branch b in Branches) if (b.finishTime < 0f && !b.stopped) { allFinished = false; break; }
+                if (allFinished || inPhase >= s.growingMaxDuration) EnterNextPhase();
+                break;
+            case PlantPhase.Flowering:
+                if (inPhase >= s.floweringDuration) EnterNextPhase();
+                break;
+            case PlantPhase.Fruiting:
+                if (inPhase >= s.fruitingDuration) EnterNextPhase();
+                break;
+            case PlantPhase.Withering:
+                //over once the wave has reached the base and the last organs/stems there have withered
+                float longest = Mathf.Max(s.leafWitherTime, s.flowerWitherTime, s.stemWitherTime);
+                if (inPhase >= s.witherWaveDuration + longest + 3f * s.witherJitter) EnterPhase(PlantPhase.Dead);
+                break;
+        }
+    }
+
+    /// <summary>Ends the current phase and starts the next enabled one (also usable from outside to skip ahead, e.g. for testing).</summary>
+    public void EnterNextPhase()
+    {
+        PlantPhase next = Phase;
+        do next = next + 1;
+        while ((next == PlantPhase.Flowering && !Settings.enableFlowering) ||
+               (next == PlantPhase.Fruiting && !Settings.enableFruiting));
+        if (next > PlantPhase.Dead) return;
+        EnterPhase(next);
+    }
+
+    void EnterPhase(PlantPhase next)
+    {
+        //leaving Growing early: unfinished branches stop where they are
+        if (Phase == PlantPhase.Growing)
+            foreach (Branch b in Branches) b.StopGrowth(this);
+        Phase = next;
+        PhaseStartTime = SimTime;
+        if (next == PlantPhase.Flowering) FloweringStartTime = SimTime;
+        if (next == PlantPhase.Fruiting) StartFruiting();
+        if (next == PlantPhase.Withering) StartWithering();
+    }
+
+    /// <summary>Decides for every flower whether it develops into a fruit; the others start withering now.</summary>
+    void StartFruiting()
+    {
+        FruitingStartTime = SimTime;
+        bool opened = FloweringStartTime < SimTime;//without a Flowering phase no flower has opened, so none sets fruit
+        foreach (Flower f in Flowers)
+        {
+            //own stream per flower (from its branch's seed): fruit set never shifts any other random decision.
+            //always the same draws, whatever the outcome
+            var r = new System.Random(unchecked(f.branch.seed * 486187739 + 4));
+            double uFruit = r.NextDouble();
+            float jitter = Mathf.Abs(Gaussian(r)) * Settings.witherJitter;
+            f.setsFruit = opened && uFruit < Settings.fruitSetProbability;
+            if (!f.setsFruit) f.witherStart = Mathf.Min(f.witherStart, SimTime + jitter);//discolors and falls off
+        }
+    }
+
+    /// <summary>Fixes when the withering wave reaches each leaf and flower: farthest from the base first.</summary>
+    void StartWithering()
+    {
+        PlantSettings s = Settings;
+        WitherStartTime = SimTime;
+        witherMaxDistance = 1e-3f;
+        foreach (Branch b in Branches) witherMaxDistance = Mathf.Max(witherMaxDistance, FinalDistance(b, b.committedLength));
+        //own stream for the jitter, so withering never shifts any other random decision
+        var r = new System.Random(unchecked(Root.seed * 486187739 + 3));
+        //always the same draws per organ; an earlier wither start (e.g. flowers without fruit) is kept
+        foreach (Leaf leaf in Leaves)
+            leaf.witherStart = Mathf.Min(leaf.witherStart,
+                WaveArrival(FinalDistance(leaf.branch, leaf.arcFresh)) + Mathf.Abs(Gaussian(r)) * s.witherJitter);
+        foreach (Flower f in Flowers)
+            f.witherStart = Mathf.Min(f.witherStart,
+                WaveArrival(FinalDistance(f.branch, f.branch.committedLength)) + Mathf.Abs(Gaussian(r)) * s.witherJitter);
+    }
+
+    /// <summary>Sim time the withering wave reaches a point at the given distance from the base.</summary>
+    float WaveArrival(float distFromBase) =>
+        WitherStartTime + (1f - Mathf.Clamp01(distFromBase / witherMaxDistance)) * Settings.witherWaveDuration;
+
+    /// <summary>How withered a point of stem is: 0 = fresh, 1 = fully withered (discolored and thinned).</summary>
+    public float StemWither(Branch b, float arcFresh)
+    {
+        if (SimTime < WitherStartTime) return 0f;
+        float start = WaveArrival(FinalDistance(b, arcFresh));
+        return Mathf.Clamp01((SimTime - start) / Settings.stemWitherTime);
+    }
+
+    /// <summary>How withered a leaf is: 0 = fresh, 1 = fully withered. At 1 it falls off.</summary>
+    public float LeafWither(Leaf leaf) => Mathf.Clamp01((SimTime - leaf.witherStart) / Settings.leafWitherTime);
+
+    /// <summary>How withered a flower is: 0 = fresh, 1 = fully withered. At 1 it falls off.</summary>
+    public float FlowerWither(Flower f) => Mathf.Clamp01((SimTime - f.witherStart) / Settings.flowerWitherTime);
+
+    /// <summary>Decides once whether a finished branch gets a flower at its tip, and creates it.</summary>
+    void FlowerCheck(Branch b)
+    {
+        b.flowerDecided = true;
+        if (b.SegmentCount == 0) return;//nothing to sit on (branch with practically no length)
+        //own stream per branch, separate from its spawn stream: flowers never shift leaf/branch decisions.
+        //always the same draws, whatever the outcome
+        var r = new System.Random(unchecked(b.seed * 486187739 + 2));
+        double uFlower = r.NextDouble();
+        double uRoll = r.NextDouble();
+        double uVariant = r.NextDouble();
+        float sizeNoise = Gaussian(r);
+        if (uFlower >= Settings.flowerProbability) return;
+
+        int count = Settings.flowerPrefabs != null ? Settings.flowerPrefabs.Length : 0;
+        int last = b.SegmentCount - 1;
+        var flower = new Flower
+        {
+            branch = b,
+            seg = last,
+            offset = b.segFreshLength[last],//end of the last segment = the branch's end point
+            birthTime = SimTime,
+            sizeFactor = Mathf.Max(0.1f, 1f + sizeNoise * Settings.flowerSizeNoise),
+            rollDeg = (float)(uRoll * 360.0),
+            variant = count > 0 ? Mathf.Min((int)(uVariant * count), count - 1) : -1,
+        };
+        b.flower = flower;
+        Flowers.Add(flower);
     }
 
     /// <summary>Called by a branch when its tip passes a spawn check position (fresh distance from its base).</summary>
@@ -79,7 +249,12 @@ public class PlantSimulation
         float angleNoise = Gaussian(r);
         float sizeNoise = Gaussian(r);
 
-        if (uSpawn >= s.spawnProbability) return;
+        //extra leaf probability toward the branch's end: rises from spawnProbability (start) to leafProbabilityAtEnd (end)
+        float u = Mathf.Clamp01(arcFresh * s.segmentStretchFactor / Mathf.Max(1e-6f, MaxLengthOf(branch)));//position as fraction of final length
+        float pLeafBoosted = Mathf.Lerp(s.spawnProbability, s.leafProbabilityAtEnd, Mathf.Pow(u, s.leafEndBoostExponent));
+        bool normalSpawn = uSpawn < s.spawnProbability;               //leaf or branch, as before
+        bool extraLeaf = !normalSpawn && uSpawn < pLeafBoosted;        //only possible toward the end, always a leaf
+        if (!normalSpawn && !extraLeaf) return;
 
         //golden angle between successive leaves/branches on this branch, plus noise
         branch.phyllotaxisAngle += GoldenAngleDeg + angleNoise * s.phyllotaxisNoiseDeg;
@@ -88,7 +263,8 @@ public class PlantSimulation
         int seg = branch.SegmentCount;
         float offset = arcFresh - branch.committedLength;
 
-        bool branchAllowed = uKind < s.branchProbability
+        bool branchAllowed = normalSpawn
+                             && uKind < s.branchProbability
                              && branch.depth < s.maxDepth
                              && arcFresh >= s.branchStartFraction * MaxFreshLengthOf(branch)
                              && s.SideBranchLength(FinalDistance(branch, arcFresh)) >= s.minBranchLength;
@@ -180,6 +356,38 @@ public class PlantSimulation
         float lengthFactor = Mathf.Max(Settings.minLeafSizeFraction, 1f - Settings.leafSizeFalloff * d);
         return Settings.maxLeafSize * lengthFactor * leaf.sizeFactor;
     }
+
+    // --- flowers ---
+
+    /// <summary>Current position of a flower's base: the end point of its branch (moves as the branch elongates).</summary>
+    public Vector3 FlowerPosition(Flower f) => f.branch.PointAt(f.seg, f.offset);
+
+    /// <summary>Direction the flower faces: the direction its branch's last segment was growing.</summary>
+    public Vector3 FlowerDirection(Flower f) => f.branch.segDir[f.seg];
+
+    /// <summary>Opening progress of a flower, 0 = bud to 1 = fully open (input for FlowerMorph).</summary>
+    public float FlowerGrowth(Flower f)
+    {
+        //closed until the Flowering phase starts (or until the bud appears, if that's later); never opens if Flowering is skipped
+        float openStart = Mathf.Max(FloweringStartTime, f.birthTime);
+        if (SimTime <= openStart) return 0f;
+        float t = Mathf.Clamp01((SimTime - openStart) / Settings.flowerOpenDuration);
+        return Mathf.Pow(t, Settings.flowerOpenExponent);
+    }
+
+    /// <summary>Fruit development of a flower: 0 = (still) a flower, 1 = ripe fruit. Always 0 for flowers that didn't set fruit.</summary>
+    public float FruitProgress(Flower f)
+    {
+        if (!f.setsFruit || SimTime <= FruitingStartTime) return 0f;
+        float t = Mathf.Clamp01((SimTime - FruitingStartTime) / Settings.fruitDevelopDuration);
+        return Mathf.Pow(t, Settings.fruitDevelopExponent);
+    }
+
+    /// <summary>How far a new bud has emerged: 0 = just appeared (size 0), 1 = full closed-bud size.</summary>
+    public float BudEmergence(Flower f) => Mathf.Clamp01((SimTime - f.birthTime) / Settings.budGrowDuration);
+
+    /// <summary>Full size of a flower: maxFlowerSize times its random factor.</summary>
+    public float FlowerTargetSize(Flower f) => Settings.maxFlowerSize * f.sizeFactor;
 
     // --- random helpers ---
 

@@ -9,9 +9,10 @@ public static class TubeMesh
 {
     /// <param name="pts">center line points, base first</param>
     /// <param name="radii">radius at each center line point</param>
+    /// <param name="pointColors">color at each center line point (written as vertex color of its ring)</param>
     /// <param name="arc">scratch list, filled with the distance from the base for each point</param>
-    public static void Append(List<Vector3> pts, List<float> radii, int radialSegments, List<float> arc,
-                              List<Vector3> verts, List<Vector3> norms, List<Vector2> uvs, List<int> tris)
+    public static void Append(List<Vector3> pts, List<float> radii, List<Color> pointColors, int radialSegments, List<float> arc,
+                              List<Vector3> verts, List<Vector3> norms, List<Vector2> uvs, List<Color> colors, List<int> tris)
     {
         int n = pts.Count;
         if (n < 2) return;//a tube needs at least two points
@@ -54,6 +55,7 @@ public static class TubeMesh
                 verts.Add(pts[i] + offset * radius);//local coords of circle vertex relative to plant origin
                 norms.Add(offset);//vector pointing from center line to circle vertex
                 uvs.Add(new Vector2((float)j / radialSegments, arc[i]));
+                colors.Add(pointColors[i]);
             }
         }
 

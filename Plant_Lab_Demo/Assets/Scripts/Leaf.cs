@@ -17,4 +17,5 @@ public class Leaf
     public float birthTime;     //sim time the leaf spawned
     public float sizeFactor;    //random per-leaf size multiplier
     public int variant;         //index into PlantSettings.leafPrefabs (-1 if there are none)
+    public float witherStart = float.PositiveInfinity; //sim time withering reaches this leaf (set when the Withering phase starts)
 }

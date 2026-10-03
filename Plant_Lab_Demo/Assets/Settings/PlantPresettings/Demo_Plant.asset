@@ -12,39 +12,74 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6a100951605744ab5a908f8be9ae55ef, type: 3}
   m_Name: Demo_Plant
   m_EditorClassIdentifier: Assembly-CSharp::PlantSettings
-  deltaT: 0.05
-  growthSpeed: 0.2
-  segmentLength: 0.1
-  segmentStretchFactor: 2
+  deltaT: 0.01
+  growingMaxDuration: 20
+  enableFlowering: 1
+  floweringDuration: 10
+  enableFruiting: 1
+  fruitingDuration: 10
+  growthSpeed: 0.55
+  segmentLength: 0.052
+  segmentStretchFactor: 1.69
   elongationTime: 5
-  maxLength: 3
+  maxLength: 6.31
   directionBias: 1
-  directionBiasFalloffPerDepth: 0.3
-  perturbationStd: 0.5
-  maxRadius: 0.04
-  radiusDepthFactor: 0.6
+  directionBiasFalloffPerDepth: 0.086
+  perturbationStd: 0.44
+  maxRadius: 0.104
+  radiusDepthFactor: 0.676
   radiusFalloffType: 2
-  radiusFalloff: 0.3
-  minRadiusFraction: 0.1
-  radialGrowthTime: 10
-  radialSegments: 8
-  spawnStartFraction: 0.05
-  spawnCheckInterval: 0.05
-  spawnProbability: 0.1
+  radiusFalloff: 0.58
+  minRadiusFraction: 0.074
+  endRadiusFraction: 0.2
+  endTaperLength: 0.3
+  radialGrowthTime: 6.7
+  radialSegments: 6
+  spawnStartFraction: 0.098
+  spawnCheckInterval: 0.02
+  spawnProbability: 0.769
+  leafProbabilityAtEnd: 0.302
+  leafEndBoostExponent: 1.82
   phyllotaxisNoiseDeg: 10
-  branchProbability: 0.3
-  branchStartFraction: 0.1
-  maxDepth: 2
-  branchElevationDeg: 45
-  sideBranchMaxLength: 1
+  branchProbability: 0.32
+  branchStartFraction: 0.092
+  maxDepth: 6
+  branchElevationDeg: 33.2
+  sideBranchMaxLength: 4.13
   lengthFalloffType: 1
-  lengthFalloff: 0.3
-  minBranchLength: 0.05
-  leafPrefabs: []
+  lengthFalloff: 0.74
+  minBranchLength: 0.074
+  leafPrefabs:
+  - {fileID: 6210749114086206293, guid: 675e43d6d7aeb4be0a2371a5dddaa6f8, type: 3}
+  - {fileID: 5580250528726161927, guid: 7d43138547292429585075f106cb8c86, type: 3}
   leafGrowthDuration: 5
-  leafGrowthExponent: 0.5
-  maxLeafSize: 0.3
+  leafGrowthExponent: 0.58
+  maxLeafSize: 0.19
   leafSizeFalloff: 0.2
   minLeafSizeFraction: 0.3
   leafSizeNoise: 0.15
-  leafElevationDeg: 35
+  leafElevationDeg: -20.1
+  flowerPrefabs:
+  - {fileID: 4799451868281231511, guid: f991fc312701640c8a3e5cec039ce8f4, type: 3}
+  flowerProbability: 0.849
+  flowerDelay: 4.8
+  budGrowDuration: 3
+  flowerOpenDuration: 8
+  flowerOpenExponent: 1
+  maxFlowerSize: 1
+  flowerSizeNoise: 0.1
+  fruitSetProbability: 0.6
+  fruitDevelopDuration: 4
+  fruitDevelopExponent: 1
+  witherWaveDuration: 30
+  witherJitter: 2
+  leafWitherTime: 6
+  flowerWitherTime: 6
+  stemWitherTime: 20
+  stemWitheredRadiusFraction: 0.7
+  witheredSaturation: 0.35
+  witheredHue: 0.234
+  witherHueShift: 0.782
+  witheredBrightness: 0.6
+  fallDamping: 4
+  fallAngularDamping: 1

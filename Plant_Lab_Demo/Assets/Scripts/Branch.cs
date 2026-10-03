@@ -49,6 +49,10 @@ public class Branch
     public float tipSegLen;         // fresh length of the segment currently forming (doesn't stretch yet)
     public float committedLength;   // fresh length of all committed segments
     public float nextSpawnCheck;    // fresh branch length at which the next spawn check happens
+    public float finishTime = -1f;  // sim time the branch formed all its tissue (-1 = still growing)
+    public bool stopped;            // growth was cut off before the branch finished (Growing phase ended): no bud
+    public bool flowerDecided;      // the flower check at the finished tip has been made (once per branch)
+    public Flower flower;           // flower at the tip, or null
     public float phyllotaxisAngle;  // angle around the branch (degrees) of the most recent leaf/branch
 
     public float FreshLength => committedLength + tipSegLen;
@@ -82,7 +86,13 @@ public class Branch
     /// </summary>
     public bool Grow(float dL, float maxFreshLength, PlantSimulation sim)
     {
-        if (FreshLength >= maxFreshLength) return false;
+        if (stopped) return false;
+        if (FreshLength >= maxFreshLength)
+        {
+            if (finishTime < 0f) finishTime = sim.SimTime;
+            return false;
+        }
+        finishTime = -1f;//growing (again, e.g. if maxLength was increased)
         PlantSettings s = sim.Settings;
 
         tipSegLen += Mathf.Min(dL, maxFreshLength - FreshLength);
@@ -103,17 +113,7 @@ public class Branch
             }
             else if (nodeAt <= FreshLength)//commit segment, start new one
             {
-                segDir.Add(tipDir);
-                segFreshLength.Add(s.segmentLength);
-                segBirth.Add(sim.SimTime);
-                segScale.Add(1f);
-                nodes.Add(LastNode + tipDir * s.segmentLength);//exact position follows in UpdateGeometry
-                nodeRadius.Add(0f);
-                nodeBirth.Add(sim.SimTime);
-                committedLength += s.segmentLength;
-                nodeArcFresh.Add(committedLength);
-                tipSegLen -= s.segmentLength;//remove already committed part, before tip continues growing
-
+                CommitSegment(s.segmentLength, sim);
                 Vector3 newDir = sim.NextDirection(this);
                 //carry the reference axis along with the branch (parallel transport, like in the tube mesh),
                 //then remove tiny floating point drift so it stays exactly perpendicular and unit length
@@ -122,7 +122,41 @@ public class Branch
             }
             else break;
         }
+        //all tissue formed: commit the last, shorter piece too, so it elongates and thickens like the rest
+        //(otherwise it would stay a permanent spike with radius 0 at the end)
+        if (FreshLength >= maxFreshLength - 1e-6f)
+        {
+            if (tipSegLen > 1e-5f) CommitSegment(tipSegLen, sim);
+            finishTime = sim.SimTime;//from now on the flower delay counts
+        }
         return true;
+    }
+
+    /// <summary>
+    /// Ends tissue formation of an unfinished branch (the Growing phase ended before it finished).
+    /// Its last piece is committed so it elongates and thickens like the rest; it never gets a bud.
+    /// </summary>
+    public void StopGrowth(PlantSimulation sim)
+    {
+        if (finishTime >= 0f || stopped) return;//already finished normally (or stopped)
+        if (tipSegLen > 1e-5f) CommitSegment(tipSegLen, sim);
+        stopped = true;
+        flowerDecided = true;//only buds that already managed to appear can flower
+    }
+
+    /// <summary>Turns the first `length` of fresh tip tissue into a committed segment that starts elongating.</summary>
+    void CommitSegment(float length, PlantSimulation sim)
+    {
+        segDir.Add(tipDir);
+        segFreshLength.Add(length);
+        segBirth.Add(sim.SimTime);
+        segScale.Add(1f);
+        nodes.Add(LastNode + tipDir * length);//exact position follows in UpdateGeometry
+        nodeRadius.Add(0f);
+        nodeBirth.Add(sim.SimTime);
+        committedLength += length;
+        nodeArcFresh.Add(committedLength);
+        tipSegLen -= length;//remove already committed part, before tip continues growing
     }
 
     /// <summary>

@@ -19,6 +19,11 @@ ModelImporter:
       assembly: UnityEngine.CoreModule
       name: leaf_green
     second: {fileID: 2100000, guid: ed64d7231b2fa4f8084dba0e2df1fe2b, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: ripe_fruit
+    second: {fileID: 2100000, guid: 7fc7f709692f348329a6a30675921832, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

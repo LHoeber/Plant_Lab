@@ -13,7 +13,18 @@ public class PlantSettings : ScriptableObject
 
     [Header("Simulation")]
     [Tooltip("Fixed simulation time step, in sim seconds.")]
-    [Range(0.005f, 0.5f)] public float deltaT = 0.05f;//step size for things to evolve
+    [NoRandomize][Range(0.005f, 0.5f)] public float deltaT = 0.05f;//step size for things to evolve
+
+    [Header("Phases (fixed order: Growing -> Flowering -> Fruiting -> Withering)")]
+    [Tooltip("Growing ends when all branches have finished, or after this many sim seconds at the latest " +
+             "(unfinished branches then stop where they are and get no bud).")]
+    [Range(1f, 600f)] public float growingMaxDuration = 120f;
+    [Tooltip("Flowering phase: the buds that exist open. Off = skipped, buds wither unopened.")]
+    public bool enableFlowering = true;
+    [Range(1f, 600f)] public float floweringDuration = 30f;
+    [Tooltip("Fruiting phase: open flowers develop into fruit (with fruitSetProbability), the others wither and fall. Off = skipped.")]
+    public bool enableFruiting = false;
+    [Range(1f, 600f)] public float fruitingDuration = 30f;
 
     [Header("Growth")]
     [Tooltip("Fresh tissue formed at each branch tip, units per sim second (same for all branches). " +
@@ -52,10 +63,15 @@ public class PlantSettings : ScriptableObject
     [Range(0f, 5f)] public float radiusFalloff = 0.3f;
     [Tooltip("The maximum radius never drops below this fraction of maxRadius (times the level factor).")]
     [Range(0f, 1f)] public float minRadiusFraction = 0.1f;
+    [Tooltip("Radius at a branch's very end, as a fraction of what it would be without the end taper.")]
+    [Range(0f, 1f)] public float endRadiusFraction = 0.2f;
+    [Tooltip("Length scale (fully elongated) of the taper toward each branch's end: " +
+             "radius factor = f + (1-f) * (1 - exp(-remaining / endTaperLength)).")]
+    [Range(0.01f, 2f)] public float endTaperLength = 0.3f;
     [Tooltip("Time constant (sim seconds) of thickening: fast at first, then slowing down. " +
              "Fresh tissue at the tip starts at radius 0, which makes the tips pointy.")]
     [Range(0.1f, 120f)] public float radialGrowthTime = 10f;
-    [Range(3, 24)] public int radialSegments = 8;
+    [NoRandomize][Range(3, 24)] public int radialSegments = 8;//rendering detail, not plant shape
 
     [Header("Spawn nodes (leaf or branch)")]
     [Tooltip("First spawn check at this fraction of the branch's maximum length (from its own base).")]
@@ -64,6 +80,11 @@ public class PlantSettings : ScriptableObject
     [Range(0.01f, 0.5f)] public float spawnCheckInterval = 0.05f;
     [Tooltip("Probability that anything (leaf or branch) spawns at a check.")]
     [Range(0f, 1f)] public float spawnProbability = 0.1f;
+    [Tooltip("Leaf probability at a branch's end. Between start and end it rises from spawnProbability to this value; " +
+             "the extra spawns are always leaves (branches are unaffected). Values below spawnProbability have no effect.")]
+    [Range(0f, 1f)] public float leafProbabilityAtEnd = 0.3f;
+    [Tooltip("Shape of that rise along the branch: 1 = linear, 2 = mostly near the end, 0.5 = already early on.")]
+    [Range(0.1f, 5f)] public float leafEndBoostExponent = 2f;
     [Tooltip("Std (degrees) of the noise added to the golden angle between successive leaves/branches.")]
     [Range(0f, 90f)] public float phyllotaxisNoiseDeg = 10f;
 
@@ -104,6 +125,75 @@ public class PlantSettings : ScriptableObject
     [Range(0f, 0.5f)] public float leafSizeNoise = 0.15f;
     [Tooltip("Angle of the blade above the plane perpendicular to the branch (0 = sticking straight out, 90 = along the branch).")]
     [Range(-45f, 90f)] public float leafElevationDeg = 35f;
+
+    [Header("Flowers")]
+    [Tooltip("Flower variants; each flower picks one at random. Each prefab's origin must be the flower's base, " +
+             "with the flower facing along local +Y. A FlowerMorph on the prefab root does the opening.")]
+    public GameObject[] flowerPrefabs;
+    [Tooltip("Probability that a branch tip gets a flower once that branch has finished growing (main stem included).")]
+    [Range(0f, 1f)] public float flowerProbability = 0.7f;
+    [Tooltip("Sim seconds between a branch finishing and its bud appearing.")]
+    [Range(0f, 60f)] public float flowerDelay = 2f;
+    [Tooltip("Sim seconds for a new bud to grow from nothing to its closed bud size. It stays closed until the Flowering phase.")]
+    [Range(0.1f, 30f)] public float budGrowDuration = 3f;
+    [Tooltip("Sim seconds from closed bud to fully open, counted from the start of the Flowering phase " +
+             "(or from the bud's appearance, if that's later).")]
+    [Range(0.1f, 60f)] public float flowerOpenDuration = 8f;
+    [Tooltip("Shape of the opening over time: growth = (age/duration)^exponent. 1 = even, 0.5 = fast at first.")]
+    [Range(0.1f, 3f)] public float flowerOpenExponent = 1f;
+    [Tooltip("Full size of a flower (size multiplier passed to FlowerMorph, on top of the prefab's own scale).")]
+    [Range(0.01f, 5f)] public float maxFlowerSize = 1f;
+    [Tooltip("Relative std of the random per-flower size factor (0.1 = +-10%).")]
+    [Range(0f, 0.5f)] public float flowerSizeNoise = 0.1f;
+
+    [Header("Fruits")]
+    [Tooltip("Probability that an open flower develops into a fruit when the Fruiting phase starts; the others wither and fall. " +
+             "Flowers that never opened (Flowering skipped) don't set fruit.")]
+    [Range(0f, 1f)] public float fruitSetProbability = 0.6f;
+    [Tooltip("Sim seconds from the start of Fruiting until a fruit is ripe. If shorter than the phase, ripe fruits wait on the plant.")]
+    [Range(0.1f, 120f)] public float fruitDevelopDuration = 15f;
+    [Tooltip("Shape of fruit development over time: progress = (age/duration)^exponent. 1 = even, 0.5 = fast at first.")]
+    [Range(0.1f, 3f)] public float fruitDevelopExponent = 1f;
+
+    [Header("Withering")]
+    [Tooltip("Sim seconds for the withering wave to travel from the organ farthest from the base down to the base.")]
+    [Range(1f, 300f)] public float witherWaveDuration = 30f;
+    [Tooltip("Std (sim seconds) of a random offset per leaf/flower, so the wave isn't perfectly regular.")]
+    [Range(0f, 20f)] public float witherJitter = 2f;
+    [Tooltip("Sim seconds a leaf discolors once the wave reaches it, before it falls off.")]
+    [Range(0.1f, 60f)] public float leafWitherTime = 6f;
+    [Tooltip("Sim seconds a flower discolors once the wave reaches it, before it falls off.")]
+    [Range(0.1f, 60f)] public float flowerWitherTime = 6f;
+    [Tooltip("Sim seconds a piece of stem takes to discolor and thin once the wave reaches it.")]
+    [Range(0.1f, 120f)] public float stemWitherTime = 20f;
+    [Tooltip("Radius of fully withered stems, as a fraction of their radius before withering.")]
+    [Range(0.1f, 1f)] public float stemWitheredRadiusFraction = 0.7f;
+    [Tooltip("Saturation kept when fully withered (0 = grey, 1 = unchanged).")]
+    [Range(0f, 1f)] public float witheredSaturation = 0.35f;
+    [Tooltip("Hue that withered colors shift toward (0.08 = brownish orange, 0.15 = yellow).")]
+    [Range(0f, 1f)] public float witheredHue = 0.08f;
+    [Tooltip("How far the hue shifts toward witheredHue (0 = not at all, 1 = completely).")]
+    [Range(0f, 1f)] public float witherHueShift = 0.7f;
+    [Tooltip("Brightness kept when fully withered.")]
+    [Range(0f, 1f)] public float witheredBrightness = 0.6f;
+    [Tooltip("Air resistance of falling leaves/flowers: higher = slower, floatier fall.")]
+    [Range(0f, 20f)] public float fallDamping = 4f;
+    [Tooltip("Rotational air resistance of falling leaves/flowers: lower = more tumbling.")]
+    [Range(0f, 20f)] public float fallAngularDamping = 1f;
+
+    /// <summary>A color after withering to a given degree (0 = fresh, 1 = fully withered): less saturated, browner, darker.</summary>
+    public Color WitherColor(Color fresh, float w)
+    {
+        if (w <= 0f) return fresh;
+        Color.RGBToHSV(fresh, out float h, out float sat, out float v);
+        float dh = Mathf.Repeat(witheredHue - h + 0.5f, 1f) - 0.5f;//shortest way around the hue circle
+        h = Mathf.Repeat(h + dh * witherHueShift * w, 1f);
+        sat *= Mathf.Lerp(1f, witheredSaturation, w);
+        v *= Mathf.Lerp(1f, witheredBrightness, w);
+        Color c = Color.HSVToRGB(h, sat, v);
+        c.a = fresh.a;
+        return c;
+    }
 
     /// <summary>Increases whenever a value is changed in the Inspector, so plants know to redraw.</summary>
     public int Version { get; private set; }
