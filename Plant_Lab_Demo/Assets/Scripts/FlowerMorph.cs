@@ -4,6 +4,7 @@ using UnityEngine;
 /// <summary>
 /// Visual morph of a flower: turns one growth value (0 = bud ... open ... 1 = last state, e.g. fruit) into
 /// blend-shape weights on all its parts, plus an overall scale and material colors.
+/// Withering additionally blends toward a wilted state (wilt_flower or wilt_fruit).
 /// Goes on the root of the flower prefab. Knows nothing about the plant simulation:
 /// for testing, move the growth slider in Play mode; on the plant, PlantVisuals calls SetGrowth/SetWither.
 ///
@@ -51,6 +52,12 @@ public class FlowerMorph : MonoBehaviour
     [Tooltip("Which state means 'ripe fruit' (end of fruit development on the plant). Leave empty if this flower has no fruit.")]
     public string fruitStateName = "fruit";
 
+    [Header("Wilting (side branch of the morph, driven by withering)")]
+    [Tooltip("Wilted state of a flower without fruit (open flower withering, or flowers that didn't set fruit).")]
+    public string wiltFlowerStateName = "wilt_flower";
+    [Tooltip("Wilted state of a flower that developed a fruit.")]
+    public string wiltFruitStateName = "wilt_fruit";
+
     [Header("Colors")]
     [Tooltip("Material colors driven by blend shapes (the Unity replacement for Blender drivers).")]
     public List<ColorLink> colorLinks = new List<ColorLink>();
@@ -61,13 +68,17 @@ public class FlowerMorph : MonoBehaviour
     [Tooltip("Shape of the scale increase: 1 = linear, 0.5 = fast at first, 2 = slow at first.")]
     [Range(0.1f, 3f)] public float scaleExponent = 1f;
 
-    [Header("Current state (slider for testing in Play mode)")]
+    [Header("Current state (sliders for testing in Play mode)")]
     [Range(0f, 1f)] public float growth = 0f;
+    [Tooltip("Withering for testing (0 = fresh, 1 = fully wilted). On the plant, it's set by the simulation.")]
+    [Range(0f, 1f)] public float testWither = 0f;
     [Tooltip("Full size multiplier (on top of the prefab's own scale). Set by the plant.")]
     [Range(0.01f, 5f)] public float size = 1f;
 
     SkinnedMeshRenderer[] renderers;
     int[][] shapeIndex;          //[renderer][stage] -> blend shape index in that renderer's mesh, -1 if missing
+    int[] wiltFlowerIndex;       //[renderer] -> index of the wilted-flower blend shape, -1 if missing
+    int[] wiltFruitIndex;        //[renderer] -> index of the wilted-fruit blend shape, -1 if missing
     float[] stageWeight;         //current weight (0..1) of each stage, from the cross-fade
     Color[][] freshColors;       //[renderer][material slot] -> the material's own color
     Vector3 baseScale;           //the prefab's own scale
@@ -129,6 +140,8 @@ public class FlowerMorph : MonoBehaviour
     void Update()
     {
         if (needsSetup) Setup();
+        //isolated test (not on a plant): the testWither slider drives the wilting shape (colors only change on the plant)
+        if (witherSettings == null) wither = testWither;
         Apply();//only does work if growth, size or wither changed
     }
 
@@ -138,6 +151,8 @@ public class FlowerMorph : MonoBehaviour
         renderers = GetComponentsInChildren<SkinnedMeshRenderer>(true);
         shapeIndex = new int[renderers.Length][];
         stageWeight = new float[stages.Count];
+        wiltFlowerIndex = new int[renderers.Length];
+        wiltFruitIndex = new int[renderers.Length];
         freshColors = new Color[renderers.Length][];
         for (int r = 0; r < renderers.Length; r++)
         {
@@ -150,6 +165,9 @@ public class FlowerMorph : MonoBehaviour
                 if (idx < 0)
                     Debug.LogWarning($"FlowerMorph: '{renderers[r].name}' has no blend shape '{stages[k].shapeName}'.", this);
             }
+            //wilted states are optional per part: a part without them just keeps its shape while withering
+            wiltFlowerIndex[r] = m != null && !string.IsNullOrEmpty(wiltFlowerStateName) ? m.GetBlendShapeIndex(wiltFlowerStateName) : -1;
+            wiltFruitIndex[r] = m != null && !string.IsNullOrEmpty(wiltFruitStateName) ? m.GetBlendShapeIndex(wiltFruitStateName) : -1;
             //remember the materials' own colors, as starting point for color links and withering
             Material[] mats = renderers[r].sharedMaterials;
             freshColors[r] = new Color[mats.Length];
@@ -196,21 +214,36 @@ public class FlowerMorph : MonoBehaviour
         for (int k = 0; k < stages.Count; k++)
             stageWeight[k] = k == cur ? t : (k == prev ? 1f - t : 0f);
 
+        //wilting: a side branch of the morph. From wherever the flower is now, it blends toward the wilted state.
+        //- how far: the wither amount, scaled by how open it is (a bud that never opened doesn't change shape, only color)
+        //- toward what: wilt_flower for a flower, wilt_fruit for a fruit, a mix for a half-developed fruit
+        float openAt = ReachedAt(openStateName, 1f);
+        float fruitAt = string.IsNullOrEmpty(fruitStateName) ? openAt : ReachedAt(fruitStateName, openAt);
+        float openness = openAt > 1e-6f ? Mathf.Clamp01(growth / openAt) : 1f;
+        float fruitness = fruitAt - openAt > 1e-6f ? Mathf.Clamp01((growth - openAt) / (fruitAt - openAt)) : 0f;
+        float wilt = wither * openness;
+        if (smoothStages) wilt = wilt * wilt * (3f - 2f * wilt);
+
         //Unity's weights go from 0 to 100 (Blender's 0..1 times 100)
         for (int r = 0; r < renderers.Length; r++)
         {
+            //all states are complete snapshots, so blending them with weights that add up to 1 gives an in-between shape
+            float wFlower = wiltFlowerIndex[r] >= 0 ? wilt * (1f - fruitness) : 0f;
+            float wFruit = wiltFruitIndex[r] >= 0 ? wilt * fruitness : 0f;
+            float keep = 1f - wFlower - wFruit;//share of the normal (growth) shape that's left
             for (int k = 0; k < stages.Count; k++)
             {
                 int idx = shapeIndex[r][k];
                 if (idx < 0) continue;
-                renderers[r].SetBlendShapeWeight(idx, stageWeight[k] * 100f);
+                renderers[r].SetBlendShapeWeight(idx, stageWeight[k] * keep * 100f);
             }
+            if (wiltFlowerIndex[r] >= 0) renderers[r].SetBlendShapeWeight(wiltFlowerIndex[r], wFlower * 100f);
+            if (wiltFruitIndex[r] >= 0) renderers[r].SetBlendShapeWeight(wiltFruitIndex[r], wFruit * 100f);
         }
 
         ApplyColors();
 
         //full size is reached when the flower is fully open; the fruit's growth is in its blend shape
-        float openAt = ReachedAt(openStateName, 1f);
         float scaleProgress = openAt > 1e-6f ? Mathf.Clamp01(growth / openAt) : 1f;
         float scale = Mathf.Lerp(startScale, 1f, Mathf.Pow(scaleProgress, scaleExponent)) * size;
         transform.localScale = baseScale * scale;

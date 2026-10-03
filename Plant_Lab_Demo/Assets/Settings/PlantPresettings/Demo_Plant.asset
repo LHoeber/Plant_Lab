@@ -12,13 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6a100951605744ab5a908f8be9ae55ef, type: 3}
   m_Name: Demo_Plant
   m_EditorClassIdentifier: Assembly-CSharp::PlantSettings
-  deltaT: 0.01
+  deltaT: 0.02
   growingMaxDuration: 20
   enableFlowering: 1
   floweringDuration: 10
   enableFruiting: 1
-  fruitingDuration: 10
-  growthSpeed: 0.55
+  fruitingDuration: 6
+  growthSpeed: 0.17
   segmentLength: 0.052
   segmentStretchFactor: 1.69
   elongationTime: 5
@@ -41,7 +41,7 @@ MonoBehaviour:
   leafProbabilityAtEnd: 0.302
   leafEndBoostExponent: 1.82
   phyllotaxisNoiseDeg: 10
-  branchProbability: 0.32
+  branchProbability: 0.16
   branchStartFraction: 0.092
   maxDepth: 6
   branchElevationDeg: 33.2
@@ -54,7 +54,7 @@ MonoBehaviour:
   - {fileID: 5580250528726161927, guid: 7d43138547292429585075f106cb8c86, type: 3}
   leafGrowthDuration: 5
   leafGrowthExponent: 0.58
-  maxLeafSize: 0.19
+  maxLeafSize: 0.25
   leafSizeFalloff: 0.2
   minLeafSizeFraction: 0.3
   leafSizeNoise: 0.15
@@ -69,7 +69,7 @@ MonoBehaviour:
   maxFlowerSize: 1
   flowerSizeNoise: 0.1
   fruitSetProbability: 0.6
-  fruitDevelopDuration: 4
+  fruitDevelopDuration: 6
   fruitDevelopExponent: 1
   witherWaveDuration: 30
   witherJitter: 2
