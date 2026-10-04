@@ -14,6 +14,10 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
     public int seed = 42;
     [Tooltip("Growth is biased toward this point. If empty, biased straight up.")]
     public Transform lightSource;//scene object -> can't live in the settings asset
+    [Tooltip("Layers whose colliders block growth (e.g. the terrarium glass on an 'Obstacle' layer). Nothing = no collisions.")]
+    public LayerMask obstacleLayers;
+    [Tooltip("Draw the collision boxes of all leaves/flowers in the Scene view (while playing).")]
+    public bool showCollisionShapes;
     [Tooltip("Sim seconds per real second (0 = paused).")]
     [Range(0f, 20f)] public float simSpeed = 1f;//speed of overall simulation relative to real time
     [Tooltip("Tick to restart growth from scratch with the current seed (and current, possibly randomized, settings).")]
@@ -70,7 +74,63 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
         meshDirty = true;
         PlantSettings s = ActiveSettings;
         sim = s != null ? new PlantSimulation(s, seed) : null;
+        if (sim != null && obstacleLayers.value != 0)
+        {
+            sim.Obstacles = new UnityObstacleField(transform, obstacleLayers);
+            //leaves and flowers need their size to be checked against obstacles before they appear
+            if (s != shapesBuiltFor) BuildShapes(s);//prefabs are voxelized once per settings asset, not on every regrow
+            sim.LeafShapes = leafShapes;
+            sim.FlowerShapes = flowerShapes;
+        }
         if (s == null) Debug.LogWarning("PlantGrowth: no PlantSettings asset assigned.", this);
+    }
+
+    OrganCompound[] leafShapes, flowerShapes;//collision shapes of the leaf/flower prefabs
+    PlantSettings shapesBuiltFor;
+
+    void BuildShapes(PlantSettings s)
+    {
+        leafShapes = BuildShapes(s.leafPrefabs, s.defaultVoxelResolution, keepRootScale: false);//leaves: visuals set their scale
+        flowerShapes = BuildShapes(s.flowerPrefabs, s.defaultVoxelResolution, keepRootScale: true);//flowers: FlowerMorph keeps it
+        shapesBuiltFor = s;
+    }
+
+    static OrganCompound[] BuildShapes(GameObject[] prefabs, int defaultResolution, bool keepRootScale)
+    {
+        if (prefabs == null) return null;
+        var shapes = new OrganCompound[prefabs.Length];
+        for (int i = 0; i < prefabs.Length; i++)
+        {
+            if (prefabs[i] == null) continue;
+            var settingsOnPrefab = prefabs[i].GetComponent<OrganCollisionShape>();
+            int res = settingsOnPrefab != null ? settingsOnPrefab.resolution : defaultResolution;
+            shapes[i] = OrganVoxelizer.Build(prefabs[i], res);
+            if (keepRootScale) shapes[i].rootScale = prefabs[i].transform.localScale.x;
+            //flowers: copy the morph settings, so the simulation knows each flower's current state and size
+            var morph = prefabs[i].GetComponent<FlowerMorph>();
+            if (morph != null)
+            {
+                shapes[i].morph = new MorphInfo
+                {
+                    stageNames = morph.stages.ConvertAll(st => st.shapeName).ToArray(),
+                    stageReachedAt = morph.stages.ConvertAll(st => st.reachedAt).ToArray(),
+                    openState = morph.openStateName,
+                    fruitState = morph.fruitStateName,
+                    wiltFlowerState = morph.wiltFlowerStateName,
+                    wiltFruitState = morph.wiltFruitStateName,
+                    startScale = morph.startScale,
+                    scaleExponent = morph.scaleExponent,
+                };
+            }
+        }
+        return shapes;
+    }
+
+    //Scene view: collision boxes of all leaves/flowers (only while playing, toggle showCollisionShapes)
+    void OnDrawGizmos()
+    {
+        if (showCollisionShapes && sim != null && visuals != null)
+            visuals.DrawCollisionShapes(leafShapes, flowerShapes, sim);
     }
 
     [ContextMenu("Randomize")]
@@ -118,6 +178,12 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
         Debug.Log($"PlantGrowth: saved randomized settings as {path} (plant seed {seed}).", asset);
     }
 #endif
+
+    //called by the editor when the component is added (or Reset from its menu): sensible default layer
+    void Reset()
+    {
+        obstacleLayers = LayerMask.GetMask("Obstacle");
+    }
 
     //called by the editor whenever a value on this component is changed in the inspector
     void OnValidate()

@@ -59,6 +59,7 @@ public class PlantVisuals
         verts.Clear(); norms.Clear(); uvs.Clear(); colors.Clear(); tris.Clear();
         foreach (Branch b in sim.Branches)
         {
+            if (!Valid(b.TipPosition) || !Valid(b.nodes[b.nodes.Count - 1])) { WarnInvalid("branch"); continue; }
             pts.Clear(); radii.Clear(); pointColors.Clear();
             pts.AddRange(b.nodes);
             radii.AddRange(b.nodeRadius);
@@ -110,7 +111,6 @@ public class PlantVisuals
             leafVisuals.Add(v);
         }
 
-        float elev = s.leafElevationDeg * Mathf.Deg2Rad;
         for (int i = 0; i < leafVisuals.Count; i++)
         {
             OrganVisual v = leafVisuals[i];
@@ -120,16 +120,15 @@ public class PlantVisuals
             Leaf leaf = sim.Leaves[i];
             //leaf base sits on its branch's surface; it moves along as the segment elongates
             //and outward as the branch thickens
-            v.t.localPosition = sim.LeafCenter(leaf) + leaf.outward * sim.LeafBranchRadius(leaf);
+            Vector3 leafPos = sim.LeafBasePos(leaf);
+            if (!Valid(leafPos)) { WarnInvalid("leaf"); continue; }
+            v.t.localPosition = leafPos;
 
-            //blade direction: outward, tilted up toward the branch direction by the elevation angle
-            Vector3 blade = Mathf.Cos(elev) * leaf.outward + Mathf.Sin(elev) * leaf.tangent;
-            Vector3 side = Vector3.Cross(leaf.tangent, leaf.outward);
-            Vector3 up = Vector3.Cross(blade, side);//upper leaf surface, facing roughly along the branch
-            v.t.localRotation = Quaternion.LookRotation(blade, up);
+            //blade outward, tilted up toward the branch direction by the elevation angle (same as in the collision check)
+            v.t.localRotation = sim.LeafRotationNow(leaf);
 
             //the only place where growth turns into visuals -> replace this line for the morphing leaf later
-            v.t.localScale = Vector3.one * (sim.LeafTargetSize(leaf) * sim.LeafGrowth(leaf));
+            v.t.localScale = Vector3.one * sim.LeafSize(leaf);
 
             float w = sim.LeafWither(leaf);
             v.ApplyWither(w, s);
@@ -165,19 +164,65 @@ public class PlantVisuals
 
             Flower flower = sim.Flowers[i];
             //base at the branch's end point, which moves outward as the branch keeps elongating
-            v.t.localPosition = sim.FlowerPosition(flower);
+            Vector3 flowerPos = sim.FlowerPosition(flower);
+            if (!Valid(flowerPos)) { WarnInvalid("flower"); continue; }
+            v.t.localPosition = flowerPos;
             //prefab's +Y turned to the last growth direction, plus the flower's own random turn around that axis
-            v.t.localRotation = Quaternion.FromToRotation(Vector3.up, sim.FlowerDirection(flower))
-                                * Quaternion.AngleAxis(flower.rollDeg, Vector3.up);
+            v.t.localRotation = sim.FlowerRotation(flower);
             //opening and size are FlowerMorph's job (blend shapes + scale); a new bud first grows in from size 0
             if (v.morph != null)
                 v.morph.SetGrowth(v.morph.GrowthFor(sim.FlowerGrowth(flower), sim.FruitProgress(flower)),
-                                  sim.FlowerTargetSize(flower) * sim.BudEmergence(flower));
+                                  sim.FlowerSize(flower));
 
             float w = sim.FlowerWither(flower);
             v.ApplyWither(w, s);
             if (w >= 1f) v.Detach(s);
         }
+    }
+
+    /// <summary>
+    /// Draws the collision boxes of all leaves and flowers still on the plant (Scene view, for checking the
+    /// voxel resolution). Flowers show the boxes of the morph state they're currently closest to.
+    /// </summary>
+    public void DrawCollisionShapes(OrganCompound[] leafShapes, OrganCompound[] flowerShapes, PlantSimulation sim)
+    {
+        Gizmos.color = new Color(0.2f, 0.9f, 1f, 0.8f);
+        for (int i = 0; i < leafVisuals.Count && i < sim.Leaves.Count; i++)
+        {
+            OrganVisual v = leafVisuals[i];
+            int variant = sim.Leaves[i].variant;
+            if (v == null || v.t == null || v.detached || leafShapes == null || variant < 0 || variant >= leafShapes.Length) continue;
+            DrawBoxes(leafShapes[variant]?.union, v.t);
+        }
+        Gizmos.color = new Color(1f, 0.5f, 0.9f, 0.8f);
+        for (int i = 0; i < flowerVisuals.Count && i < sim.Flowers.Count; i++)
+        {
+            OrganVisual v = flowerVisuals[i];
+            int variant = sim.Flowers[i].variant;
+            if (v == null || v.t == null || v.detached || flowerShapes == null || variant < 0 || variant >= flowerShapes.Length) continue;
+            OrganCompound c = flowerShapes[variant];
+            if (c != null) DrawBoxes(v.morph != null ? c.BoxesFor(v.morph.DominantState) : c.union, v.t);
+        }
+        Gizmos.matrix = Matrix4x4.identity;
+    }
+
+    static void DrawBoxes(OrganBox[] boxes, Transform t)
+    {
+        if (boxes == null) return;
+        //boxes are in the organ's own space at size 1; the organ's transform (incl. its current scale) places them
+        Gizmos.matrix = t.localToWorldMatrix;
+        foreach (OrganBox b in boxes) Gizmos.DrawWireCube(b.center, b.half * 2f);
+    }
+
+    //safety net: an invalid position (infinite/NaN) would crash Unity's renderer; skip it and report once
+    static bool Valid(Vector3 v) => !(float.IsNaN(v.x) || float.IsNaN(v.y) || float.IsNaN(v.z) ||
+                                      float.IsInfinity(v.x) || float.IsInfinity(v.y) || float.IsInfinity(v.z));
+    bool warnedInvalid;
+    void WarnInvalid(string what)
+    {
+        if (warnedInvalid) return;
+        warnedInvalid = true;
+        Debug.LogWarning($"PlantVisuals: a {what} got an invalid position (NaN/infinite) and isn't drawn. Please report when this happens.");
     }
 
     //meshes created with new Mesh() live on Unity's native side and aren't garbage collected
@@ -256,7 +301,12 @@ public class PlantVisuals
             rb.mass = 0.01f;
             rb.linearDamping = s.fallDamping;        //air resistance: slow, floaty fall
             rb.angularDamping = s.fallAngularDamping;
-            rb.angularVelocity = Random.insideUnitSphere * 2f;//a little initial tumbling (physics part isn't deterministic anyway)
+            rb.angularVelocity = Random.insideUnitSphere * 0.4f;//a slight initial tumble (physics part isn't deterministic anyway)
+            //if it overlaps something when detaching (e.g. a neighbor that detached at the same moment), separate gently:
+            //Unity's default pushes overlapping bodies apart at up to 10 m/s, which made leaves visibly jump
+            rb.maxDepenetrationVelocity = 0.1f;
+            //smooth motion between physics steps (physics runs at a fixed rate, the screen doesn't)
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
         }
 
         /// <summary>Bounding box of all its renderers, in this organ's own local space.</summary>

@@ -20,7 +20,7 @@ MonoBehaviour:
   fruitingDuration: 6
   growthSpeed: 0.17
   segmentLength: 0.052
-  segmentStretchFactor: 1.69
+  segmentStretchFactor: 1
   elongationTime: 5
   maxLength: 6.31
   directionBias: 1
@@ -37,11 +37,11 @@ MonoBehaviour:
   radialSegments: 6
   spawnStartFraction: 0.098
   spawnCheckInterval: 0.02
-  spawnProbability: 0.769
+  spawnProbability: 0.849
   leafProbabilityAtEnd: 0.302
   leafEndBoostExponent: 1.82
   phyllotaxisNoiseDeg: 10
-  branchProbability: 0.16
+  branchProbability: 0.08
   branchStartFraction: 0.092
   maxDepth: 6
   branchElevationDeg: 33.2
@@ -71,6 +71,11 @@ MonoBehaviour:
   fruitSetProbability: 0.6
   fruitDevelopDuration: 6
   fruitDevelopExponent: 1
+  obstacleClearance: 0.01
+  leafMaxTurnDeg: 90
+  flowerMaxTiltDeg: 30
+  minOrganFitScale: 0.4
+  defaultVoxelResolution: 10
   witherWaveDuration: 30
   witherJitter: 2
   leafWitherTime: 6

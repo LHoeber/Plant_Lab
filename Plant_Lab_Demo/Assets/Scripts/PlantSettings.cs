@@ -155,6 +155,27 @@ public class PlantSettings : ScriptableObject
     [Tooltip("Shape of fruit development over time: progress = (age/duration)^exponent. 1 = even, 0.5 = fast at first.")]
     [Range(0.1f, 3f)] public float fruitDevelopExponent = 1f;
 
+    [Header("Collisions")]
+    [Tooltip("Gap (in units) a growing tip keeps from obstacles; it slides along them at this distance.")]
+    [Range(0.001f, 0.1f)] public float obstacleClearance = 0.01f;
+    [Tooltip("A leaf touching an obstacle first turns at its base (like a bending leaf stalk), by up to this angle (degrees) in total.")]
+    [Range(0f, 90f)] public float leafMaxTiltDeg = 45f;
+    [Tooltip("A flower/fruit touching an obstacle first tilts away, by up to this angle (degrees) in total.")]
+    [Range(0f, 90f)] public float flowerMaxTiltDeg = 30f;
+    [Tooltip("Maximum bend at a single node (degrees). If all nodes are at their limit, the touching organ stops growing.")]
+    [Range(1f, 90f)] public float maxJointBendDeg = 35f;
+    [Tooltip("How fast a node may bend (degrees per sim second). Organs may tilt 3x as fast. If that can't keep up " +
+             "with growth, the touching part stops growing instead of passing through.")]
+    [Range(0.5f, 90f)] public float bendSpeed = 15f;
+    [Tooltip("Sim seconds for a bend to spring back halfway once nothing pushes anymore (elastic part).")]
+    [Range(0.1f, 60f)] public float bendRelaxTime = 3f;
+    [Tooltip("Sim seconds for a bend to become permanent (the branch 'remembers' it, like growth adapting).")]
+    [Range(0.1f, 300f)] public float bendSettleTime = 15f;
+    [Tooltip("Passes per step to resolve contacts (moving one part can make another touch).")]
+    [NoRandomize][Range(1, 10)] public int contactIterations = 4;
+    [Tooltip("Grid cells along an organ's longest side for its collision shape, for prefabs without an OrganCollisionShape component.")]
+    [NoRandomize][Range(2, 32)] public int defaultVoxelResolution = 10;
+
     [Header("Withering")]
     [Tooltip("Sim seconds for the withering wave to travel from the organ farthest from the base down to the base.")]
     [Range(1f, 300f)] public float witherWaveDuration = 30f;

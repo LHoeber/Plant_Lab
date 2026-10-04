@@ -75,6 +75,9 @@ public class FlowerMorph : MonoBehaviour
     [Tooltip("Full size multiplier (on top of the prefab's own scale). Set by the plant.")]
     [Range(0.01f, 5f)] public float size = 1f;
 
+    /// <summary>Name of the state the flower currently resembles most ("" = basis), e.g. for showing its collision boxes.</summary>
+    public string DominantState { get; private set; } = "";
+
     SkinnedMeshRenderer[] renderers;
     int[][] shapeIndex;          //[renderer][stage] -> blend shape index in that renderer's mesh, -1 if missing
     int[] wiltFlowerIndex;       //[renderer] -> index of the wilted-flower blend shape, -1 if missing
@@ -240,6 +243,17 @@ public class FlowerMorph : MonoBehaviour
             if (wiltFlowerIndex[r] >= 0) renderers[r].SetBlendShapeWeight(wiltFlowerIndex[r], wFlower * 100f);
             if (wiltFruitIndex[r] >= 0) renderers[r].SetBlendShapeWeight(wiltFruitIndex[r], wFruit * 100f);
         }
+
+        //which state the flower is closest to right now (for showing its collision boxes)
+        float best = 1f - wilt;//basis share, see below
+        DominantState = "";
+        float stagesTotal = 0f;
+        for (int k = 0; k < stages.Count; k++) stagesTotal += stageWeight[k];
+        best = (1f - stagesTotal) * (1f - wilt);
+        for (int k = 0; k < stages.Count; k++)
+            if (stageWeight[k] * (1f - wilt) > best) { best = stageWeight[k] * (1f - wilt); DominantState = stages[k].shapeName; }
+        if (wilt * (1f - fruitness) > best) { best = wilt * (1f - fruitness); DominantState = wiltFlowerStateName; }
+        if (wilt * fruitness > best) { DominantState = wiltFruitStateName; }
 
         ApplyColors();
 
