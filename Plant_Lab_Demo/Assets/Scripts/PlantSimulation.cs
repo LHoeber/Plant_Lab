@@ -44,51 +44,44 @@ public class PlantSimulation
         Settings = settings;
         //main stem: starts at the origin, growing up; any vector perpendicular to up works as reference axis
         Root = new Branch(seed, 0, null, 0, 0f, 0f, Vector3.zero, Vector3.up, Vector3.forward, 0f);
-        Root.nextSpawnCheck = Settings.spawnStartFraction * MaxFreshLengthOf(Root);
+        Root.nextSpawnCheck = Settings.spawnStartFraction * MaxLengthOf(Root);
         Branches.Add(Root);
     }
 
     // --- growth formulas ---
 
-    /// <summary>Current stretch of a segment of the given age: 1 when committed, approaching segmentStretchFactor.</summary>
-    public float StretchScale(float age) =>
-        1f + (Settings.segmentStretchFactor - 1f) * (1f - Mathf.Exp(-age / Settings.elongationTime));
+    /// <summary>Distance from the plant base (along the plant) of a point at a distance arcPos from a branch's base.</summary>
+    public float DistanceFromBase(Branch b, float arcPos) => BaseDistance(b) + arcPos;
 
-    /// <summary>Distance from the plant base, fully elongated, of a point at a fresh distance from a branch's base.</summary>
-    public float FinalDistance(Branch b, float arcFresh) => BaseFinalDistance(b) + arcFresh * Settings.segmentStretchFactor;
-
-    /// <summary>Distance from the plant base, fully elongated, of a branch's base.</summary>
-    public float BaseFinalDistance(Branch b) => b.parent == null ? 0f : FinalDistance(b.parent, b.attachArcFresh);
+    /// <summary>Distance from the plant base (along the plant) of a branch's base.</summary>
+    public float BaseDistance(Branch b) => b.parent == null ? 0f : DistanceFromBase(b.parent, b.attachArc);
 
     /// <summary>Current radius of a point: approaches its target radius, fast at first, then slowing down.</summary>
-    public float RadiusAt(Branch b, float arcFresh, float age) =>
-        TargetRadius(b, arcFresh) * (1f - Mathf.Exp(-age / Settings.radialGrowthTime))
-        * Mathf.Lerp(1f, Settings.stemWitheredRadiusFraction, StemWither(b, arcFresh));//thinner while withering
+    public float RadiusAt(Branch b, float arcPos, float age) =>
+        TargetRadius(b, arcPos) * (1f - Mathf.Exp(-age / Settings.radialGrowthTime))
+        * Mathf.Lerp(1f, Settings.stemWitheredRadiusFraction, StemWither(b, arcPos));//thinner while withering
 
     /// <summary>
     /// Radius a point eventually reaches: maximum radius from distance to base and branching level,
     /// narrowed smoothly toward the branch's end, and never thicker than the parent where the branch is attached.
     /// </summary>
-    public float TargetRadius(Branch b, float arcFresh)
+    public float TargetRadius(Branch b, float arcPos)
     {
         PlantSettings s = Settings;
-        float remaining = Mathf.Max(0f, MaxLengthOf(b) - arcFresh * s.segmentStretchFactor);//final length left to the end
-        float f = s.endRadiusFraction;
+        float remaining = Mathf.Max(0f, MaxLengthOf(b) - arcPos);//length left to the branch's end
+        float f = PlantSettings.EndRadiusFraction;
         float endTaper = f + (1f - f) * (1f - Mathf.Exp(-remaining / s.endTaperLength));
-        float r = s.MaxRadiusAt(FinalDistance(b, arcFresh), b.depth) * endTaper;
-        return b.parent == null ? r : Mathf.Min(r, TargetRadius(b.parent, b.attachArcFresh));
+        float r = s.MaxRadiusAt(DistanceFromBase(b, arcPos), b.depth) * endTaper;
+        return b.parent == null ? r : Mathf.Min(r, TargetRadius(b.parent, b.attachArc));
     }
 
-    /// <summary>Maximum length of a branch, fully elongated (from the current settings, so sliders act immediately).</summary>
-    public float MaxLengthOf(Branch b) => b.depth == 0 ? Settings.maxLength : Settings.SideBranchLength(BaseFinalDistance(b));
+    /// <summary>Maximum length of a branch (from the current settings, so sliders act immediately).</summary>
+    public float MaxLengthOf(Branch b) => b.depth == 0 ? Settings.maxLength : Settings.SideBranchLength(BaseDistance(b));
 
-    /// <summary>How much fresh tissue a branch forms in total, so that it reaches its maximum length once fully elongated.</summary>
-    public float MaxFreshLengthOf(Branch b) => MaxLengthOf(b) / Settings.segmentStretchFactor;
-
-    /// <summary>One fixed simulation step. Returns true, because elongation and thickening change the shape every step.</summary>
+    /// <summary>One fixed simulation step. Returns true, because thickening and bending change the shape every step.</summary>
     public bool Step(float dt)
     {
-        SimTime += dt;//leaves keep aging and segments keep elongating even after all tips stopped
+        SimTime += dt;//leaves keep aging and stems keep thickening even after all tips stopped
         if (Phase == PlantPhase.Growing)
         {
             //new tissue is only formed in the Growing phase
@@ -97,7 +90,7 @@ public class PlantSimulation
             //branches spawned during this step start growing in the next one
             int n = Branches.Count;
             for (int i = 0; i < n; i++)
-                Branches[i].Grow(dL, MaxFreshLengthOf(Branches[i]), this);
+                Branches[i].Grow(dL, MaxLengthOf(Branches[i]), this);
         }
         //positions and radii for the new sim time; creation order = parents before children
         foreach (Branch b in Branches) b.UpdateGeometry(this);
@@ -125,7 +118,7 @@ public class PlantSimulation
             case PlantPhase.Growing:
                 bool allFinished = true;
                 foreach (Branch b in Branches) if (b.finishTime < 0f && !b.stopped) { allFinished = false; break; }
-                if (allFinished || inPhase >= s.growingMaxDuration) EnterNextPhase();
+                if (allFinished || inPhase >= s.growingDuration) EnterNextPhase();
                 break;
             case PlantPhase.Flowering:
                 if (inPhase >= s.floweringDuration) EnterNextPhase();
@@ -135,7 +128,7 @@ public class PlantSimulation
                 break;
             case PlantPhase.Withering:
                 //over once the wave has reached the base and the last organs/stems there have withered
-                float longest = Mathf.Max(s.leafWitherTime, s.flowerWitherTime, s.stemWitherTime);
+                float longest = Mathf.Max(s.organWitherTime, s.stemWitherTime);
                 if (inPhase >= s.witherWaveDuration + longest + 3f * s.witherJitter) EnterPhase(PlantPhase.Dead);
                 break;
         }
@@ -187,16 +180,16 @@ public class PlantSimulation
         PlantSettings s = Settings;
         WitherStartTime = SimTime;
         witherMaxDistance = 1e-3f;
-        foreach (Branch b in Branches) witherMaxDistance = Mathf.Max(witherMaxDistance, FinalDistance(b, b.committedLength));
+        foreach (Branch b in Branches) witherMaxDistance = Mathf.Max(witherMaxDistance, DistanceFromBase(b, b.committedLength));
         //own stream for the jitter, so withering never shifts any other random decision
         var r = new System.Random(unchecked(Root.seed * 486187739 + 3));
         //always the same draws per organ; an earlier wither start (e.g. flowers without fruit) is kept
         foreach (Leaf leaf in Leaves)
             leaf.witherStart = Mathf.Min(leaf.witherStart,
-                WaveArrival(FinalDistance(leaf.branch, leaf.arcFresh)) + Mathf.Abs(Gaussian(r)) * s.witherJitter);
+                WaveArrival(DistanceFromBase(leaf.branch, leaf.arcPos)) + Mathf.Abs(Gaussian(r)) * s.witherJitter);
         foreach (Flower f in Flowers)
             f.witherStart = Mathf.Min(f.witherStart,
-                WaveArrival(FinalDistance(f.branch, f.branch.committedLength)) + Mathf.Abs(Gaussian(r)) * s.witherJitter);
+                WaveArrival(DistanceFromBase(f.branch, f.branch.committedLength)) + Mathf.Abs(Gaussian(r)) * s.witherJitter);
     }
 
     /// <summary>Sim time the withering wave reaches a point at the given distance from the base.</summary>
@@ -204,18 +197,18 @@ public class PlantSimulation
         WitherStartTime + (1f - Mathf.Clamp01(distFromBase / witherMaxDistance)) * Settings.witherWaveDuration;
 
     /// <summary>How withered a point of stem is: 0 = fresh, 1 = fully withered (discolored and thinned).</summary>
-    public float StemWither(Branch b, float arcFresh)
+    public float StemWither(Branch b, float arcPos)
     {
         if (SimTime < WitherStartTime) return 0f;
-        float start = WaveArrival(FinalDistance(b, arcFresh));
+        float start = WaveArrival(DistanceFromBase(b, arcPos));
         return Mathf.Clamp01((SimTime - start) / Settings.stemWitherTime);
     }
 
     /// <summary>How withered a leaf is: 0 = fresh, 1 = fully withered. At 1 it falls off.</summary>
-    public float LeafWither(Leaf leaf) => Mathf.Clamp01((SimTime - leaf.witherStart) / Settings.leafWitherTime);
+    public float LeafWither(Leaf leaf) => Mathf.Clamp01((SimTime - leaf.witherStart) / Settings.organWitherTime);
 
     /// <summary>How withered a flower is: 0 = fresh, 1 = fully withered. At 1 it falls off.</summary>
-    public float FlowerWither(Flower f) => Mathf.Clamp01((SimTime - f.witherStart) / Settings.flowerWitherTime);
+    public float FlowerWither(Flower f) => Mathf.Clamp01((SimTime - f.witherStart) / Settings.organWitherTime);
 
     /// <summary>Decides once whether a finished branch gets a flower at its tip, and creates it.</summary>
     void FlowerCheck(Branch b)
@@ -229,7 +222,7 @@ public class PlantSimulation
         double uRoll = r.NextDouble();
         double uVariant = r.NextDouble();
         float sizeNoise = Gaussian(r);
-        if (uFlower >= Settings.flowerProbability) return;
+        if (uFlower >= Settings.flowerProbability || Flowers.Count >= Settings.maxFlowers) return;//(safety limit)
 
         int count = Settings.flowerPrefabs != null ? Settings.flowerPrefabs.Length : 0;
         int last = b.SegmentCount - 1;
@@ -237,7 +230,7 @@ public class PlantSimulation
         {
             branch = b,
             seg = last,
-            offset = b.segFreshLength[last],//end of the last segment = the branch's end point
+            offset = b.segLength[last],//end of the last segment = the branch's end point
             birthTime = SimTime,
             sizeFactor = Mathf.Max(0.1f, 1f + sizeNoise * Settings.flowerSizeNoise),
             rollDeg = (float)(uRoll * 360.0),
@@ -248,8 +241,8 @@ public class PlantSimulation
         Flowers.Add(flower);
     }
 
-    /// <summary>Called by a branch when its tip passes a spawn check position (fresh distance from its base).</summary>
-    public void SpawnCheck(Branch branch, float arcFresh)
+    /// <summary>Called by a branch when its tip passes a spawn check position (distance from its base).</summary>
+    public void SpawnCheck(Branch branch, float arcPos)
     {
         PlantSettings s = Settings;
         System.Random r = branch.spawnRng;
@@ -262,8 +255,8 @@ public class PlantSimulation
         float sizeNoise = Gaussian(r);
 
         //extra leaf probability toward the branch's end: rises from spawnProbability (start) to leafProbabilityAtEnd (end)
-        float u = Mathf.Clamp01(arcFresh * s.segmentStretchFactor / Mathf.Max(1e-6f, MaxLengthOf(branch)));//position as fraction of final length
-        float pLeafBoosted = Mathf.Lerp(s.spawnProbability, s.leafProbabilityAtEnd, Mathf.Pow(u, s.leafEndBoostExponent));
+        float u = Mathf.Clamp01(arcPos / Mathf.Max(1e-6f, MaxLengthOf(branch)));//position as fraction of the branch's maximum length
+        float pLeafBoosted = Mathf.Lerp(s.spawnProbability, s.leafProbabilityAtEnd, Mathf.Pow(u, PlantSettings.LeafEndBoostExponent));
         bool normalSpawn = uSpawn < s.spawnProbability;               //leaf or branch, as before
         bool extraLeaf = !normalSpawn && uSpawn < pLeafBoosted;        //only possible toward the end, always a leaf
         if (!normalSpawn && !extraLeaf) return;
@@ -271,22 +264,23 @@ public class PlantSimulation
         //golden angle between successive leaves/branches on this branch, plus noise
         branch.phyllotaxisAngle += GoldenAngleDeg + angleNoise * s.phyllotaxisNoiseDeg;
         Vector3 outward = branch.OutwardAt(branch.phyllotaxisAngle);
-        //the check lies on the tip segment; attachments are stored as (segment, fresh offset in it)
+        //the check lies on the tip segment; attachments are stored as (segment, offset in it)
         int seg = branch.SegmentCount;
-        float offset = arcFresh - branch.committedLength;
+        float offset = arcPos - branch.committedLength;
 
         bool branchAllowed = normalSpawn
                              && uKind < s.branchProbability
                              && branch.depth < s.maxDepth
-                             && arcFresh >= s.branchStartFraction * MaxFreshLengthOf(branch)
-                             && s.SideBranchLength(FinalDistance(branch, arcFresh)) >= s.minBranchLength;
+                             && arcPos >= s.branchStartFraction * MaxLengthOf(branch)
+                             && s.SideBranchLength(DistanceFromBase(branch, arcPos)) >= PlantSettings.MinBranchLength
+                             && Branches.Count < s.maxBranches;//safety limit
         if (branchAllowed)
-            SpawnBranch(branch, seg, offset, arcFresh, outward);
-        else
-            SpawnLeaf(branch, seg, offset, arcFresh, outward, sizeNoise, uVariant);
+            SpawnBranch(branch, seg, offset, arcPos, outward);
+        else if (Leaves.Count < s.maxLeaves)//safety limit
+            SpawnLeaf(branch, seg, offset, arcPos, outward, sizeNoise, uVariant);
     }
 
-    void SpawnBranch(Branch parent, int seg, float offset, float arcFresh, Vector3 outward)
+    void SpawnBranch(Branch parent, int seg, float offset, float arcPos, Vector3 outward)
     {
         float elev = Settings.branchElevationDeg * Mathf.Deg2Rad;
         //initial direction: outward, tilted toward the parent's direction by the elevation angle
@@ -294,14 +288,14 @@ public class PlantSimulation
         //perpendicular to both parent direction and outward -> always perpendicular to dir as well
         Vector3 normal = Vector3.Cross(parent.tipDir, outward).normalized;
         int childSeed = DeriveSeed(parent.seed, parent.children.Count);
-        var child = new Branch(childSeed, parent.depth + 1, parent, seg, offset, arcFresh,
+        var child = new Branch(childSeed, parent.depth + 1, parent, seg, offset, arcPos,
                                parent.PointAt(seg, offset), dir, normal, SimTime);
-        child.nextSpawnCheck = Settings.spawnStartFraction * MaxFreshLengthOf(child);
+        child.nextSpawnCheck = Settings.spawnStartFraction * MaxLengthOf(child);
         parent.children.Add(child);
         Branches.Add(child);
     }
 
-    void SpawnLeaf(Branch branch, int seg, float offset, float arcFresh, Vector3 outward,
+    void SpawnLeaf(Branch branch, int seg, float offset, float arcPos, Vector3 outward,
                    float sizeNoise, double uVariant)
     {
         int count = Settings.leafPrefabs != null ? Settings.leafPrefabs.Length : 0;
@@ -310,7 +304,7 @@ public class PlantSimulation
             branch = branch,
             seg = seg,
             offset = offset,
-            arcFresh = arcFresh,
+            arcPos = arcPos,
             tangent = branch.tipDir,
             outward = outward,
             birthTime = SimTime,
@@ -362,11 +356,11 @@ public class PlantSimulation
         //spherical interpolation toward the light. The per-segment fraction 1 - exp(-k*L) compounds to
         //exp(-k*distance) over any distance, so the bending per unit length doesn't depend on segmentLength.
         //k gets smaller with every branching level
-        float turnFraction = 1f - Mathf.Exp(-s.DirectionBiasAt(b.depth) * s.segmentLength);
+        float turnFraction = 1f - Mathf.Exp(-s.DirectionBiasAt(b.depth) * PlantSettings.SegmentLength);
         Vector3 biased = Vector3.Slerp(b.TipDirNow, toTarget, turnFraction);
         //variances of independent steps add up, so std per segment scales with sqrt(segmentLength)
         //total variance is independent from L this way, because: (D/L)*sigma^2*sqrt(L)^2 = D*sigma^2
-        float segmentStd = s.perturbationStd * Mathf.Sqrt(s.segmentLength);
+        float segmentStd = s.perturbationStd * Mathf.Sqrt(PlantSettings.SegmentLength);
         System.Random r = b.dirRng;
         Vector3 noise = new Vector3(Gaussian(r), Gaussian(r), Gaussian(r)) * segmentStd;
         Vector3 result = biased + noise;
@@ -385,14 +379,14 @@ public class PlantSimulation
     public float LeafGrowth(Leaf leaf)
     {
         float t = Mathf.Clamp01((SimTime - leaf.birthTime) / Settings.leafGrowthDuration);
-        return Mathf.Pow(t, Settings.leafGrowthExponent);
+        return Mathf.Pow(t, PlantSettings.LeafGrowthExponent);
     }
 
     /// <summary>Full-grown size of a leaf: linear decrease with distance from the plant base, times its random factor.</summary>
     public float LeafTargetSize(Leaf leaf)
     {
-        float d = FinalDistance(leaf.branch, leaf.arcFresh);
-        float lengthFactor = Mathf.Max(Settings.minLeafSizeFraction, 1f - Settings.leafSizeFalloff * d);
+        float d = DistanceFromBase(leaf.branch, leaf.arcPos);
+        float lengthFactor = Mathf.Max(PlantSettings.MinLeafSizeFraction, 1f - Settings.leafSizeFalloff * Settings.Relative(d));
         return Settings.maxLeafSize * lengthFactor * leaf.sizeFactor;
     }
 
@@ -401,7 +395,7 @@ public class PlantSimulation
 
     // --- flowers ---
 
-    /// <summary>Current position of a flower's base: the end point of its branch (moves as the branch elongates).</summary>
+    /// <summary>Current position of a flower's base: the end point of its branch (moves when the branch bends).</summary>
     public Vector3 FlowerPosition(Flower f) => f.branch.PointAt(f.seg, f.offset);
 
     /// <summary>Direction the flower faces now: its branch's last direction, with bends and its own tilt applied.</summary>
@@ -414,7 +408,7 @@ public class PlantSimulation
         float openStart = Mathf.Max(FloweringStartTime, f.birthTime);
         if (SimTime <= openStart) return 0f;
         float t = Mathf.Clamp01((SimTime - openStart) / Settings.flowerOpenDuration);
-        return Mathf.Pow(t, Settings.flowerOpenExponent);
+        return t;
     }
 
     /// <summary>Fruit development of a flower: 0 = (still) a flower, 1 = ripe fruit. Always 0 for flowers that didn't set fruit.</summary>
@@ -422,7 +416,7 @@ public class PlantSimulation
     {
         if (!f.setsFruit || SimTime <= FruitingStartTime) return 0f;
         float t = Mathf.Clamp01((SimTime - FruitingStartTime) / Settings.fruitDevelopDuration);
-        return Mathf.Pow(t, Settings.fruitDevelopExponent);
+        return t;
     }
 
     /// <summary>How far a new bud has emerged: 0 = just appeared (size 0), 1 = full closed-bud size.</summary>
@@ -450,7 +444,7 @@ public class PlantSimulation
         bool anyBend = false;
         foreach (Branch b in Branches)
         {
-            b.RelaxBends(dt, s.bendRelaxTime, s.bendSettleTime, SimTime - b.lastContactTime < 1f);
+            b.RelaxBends(dt, PlantSettings.BendRelaxTime, s.bendSettleTime, SimTime - b.lastContactTime < 1f);
             anyBend |= b.HasBends;
         }
         if (anyBend) foreach (Branch b in Branches) b.UpdateGeometry(this);
@@ -458,13 +452,13 @@ public class PlantSimulation
 
         bool stillTouching = false;
         //speed limits: how far each node / organ may turn in this whole step, shared by all contacts and passes
-        float nodeStep = s.bendSpeed * dt;
+        float nodeStep = PlantSettings.BendSpeed * dt;
         float organStep = 1.5f * nodeStep;
         moveStep = s.bendMoveSpeed * dt;
         foreach (Branch b in Branches) b.ResetBendBudget();
         foreach (Leaf leaf in Leaves) { leaf.movedThisStep = false; leaf.tiltUsed = 0f; }
         foreach (Flower f in Flowers) { f.movedThisStep = false; f.tiltUsed = 0f; }
-        for (int pass = 0; pass < s.contactIterations; pass++)
+        for (int pass = 0; pass < PlantSettings.ContactIterations; pass++)
         {
             bool any = false;
             foreach (Branch b in Branches) b.movedThisPass = false;
@@ -480,7 +474,12 @@ public class PlantSimulation
                     if (r < 1e-4f) continue;
                     if (Obstacles.CapsulePenetration(b.nodes[k], b.nodes[k + 1], r + 0.5f * s.obstacleClearance, out Vector3 push))
                     {
-                        PushBranch(b, k, (b.nodes[k] + b.nodes[k + 1]) * 0.5f, push, nodeStep);
+                        //first a local sideways shift (the stem keeps thickening and moves away, like a dent),
+                        //only what that can't do goes to bending
+                        Vector3 rest = b.ShiftAway(k, push * 1.02f, moveStep, MaxShiftRadii, s.obstacleClearance);
+                        b.lastContactTime = SimTime;//pressed: no elastic springback for now
+                        b.movedThisPass = true;
+                        if (rest.sqrMagnitude > 1e-12f) PushBranch(b, k, (b.nodes[k] + b.nodes[k + 1]) * 0.5f, rest, nodeStep);
                         any = true;
                     }
                 }
@@ -559,9 +558,9 @@ public class PlantSimulation
         if (mag < 1e-7f) return;
         Vector3 dirP = push / push.magnitude;
         float r0 = Settings.bendFlexibleRadius;
-        //regularization: the "price" of not resolving the push. A node of radius r0 with a lever of 0.1 units
+        //regularization: the "price" of not resolving the push. A node of radius r0 with a lever of 10 x r0
         //resolves about half of the push per pass; thick nodes almost nothing
-        const float leverScale = 0.1f;
+        float leverScale = 10f * r0;//scales with the plant (0.1 units for a flexible radius of 0.01)
         float lambda = leverScale * leverScale;
 
         chainBranch.Clear(); chainNode.Clear(); chainWeight.Clear(); chainLever.Clear(); chainAxis.Clear();
@@ -597,11 +596,12 @@ public class PlantSimulation
         {
             float angle = chainWeight[j] * chainLever[j] * mag / sum * slow;//radians
             float applied = chainBranch[j].BendAtNode(chainNode[j], Quaternion.AngleAxis(angle * Mathf.Rad2Deg, chainAxis[j]),
-                                                      Settings.maxJointBendDeg, maxStepDeg);
+                                                      PlantSettings.MaxJointBendDeg, maxStepDeg);
             if (applied > 0f) chainBranch[j].movedThisPass = true;
         }
     }
     float moveStep;//how far a touching point may be moved by bending in this step
+    const float MaxShiftRadii = 2f;//a node shifts sideways by at most twice its own radius; more is left to bending
     readonly List<Branch> chainBranch = new List<Branch>();
     readonly List<int> chainNode = new List<int>();
     readonly List<float> chainWeight = new List<float>(), chainLever = new List<float>();

@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// Optional, on the root of a leaf or flower prefab: how finely its collision shape is computed.
-/// Prefabs without it use PlantSettings.defaultVoxelResolution.
+/// Prefabs without it use PlantSettings.DefaultVoxelResolution (10).
 /// </summary>
 public class OrganCollisionShape : MonoBehaviour
 {

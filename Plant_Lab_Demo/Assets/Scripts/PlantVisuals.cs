@@ -65,7 +65,7 @@ public class PlantVisuals
             radii.AddRange(b.nodeRadius);
             for (int k = 0; k < b.nodes.Count; k++)
             {
-                Color c = s.WitherColor(stemColor, sim.StemWither(b, b.nodeArcFresh[k]));
+                Color c = s.WitherColor(stemColor, sim.StemWither(b, b.nodeArc[k]));
                 //material colors get converted to linear space for the shader automatically, vertex colors don't
                 pointColors.Add(linearSpace ? c.linear : c);
             }
@@ -81,7 +81,7 @@ public class PlantVisuals
                 radii.Add(0f);
                 pointColors.Add(endColor);
             }
-            TubeMesh.Append(pts, radii, pointColors, s.radialSegments, arc, verts, norms, uvs, colors, tris);
+            TubeMesh.Append(pts, radii, pointColors, PlantSettings.RadialSegments, arc, verts, norms, uvs, colors, tris);
         }
         mesh.Clear();//before setting new data, in case the plant was reset or has fewer vertices now
         mesh.SetVertices(verts);
@@ -118,7 +118,7 @@ public class PlantVisuals
             if (v.detached) { if (v.t.position.y < LostBelowY) { v.Destroy(); leafVisuals[i] = null; } continue; }//physics moves it now
 
             Leaf leaf = sim.Leaves[i];
-            //leaf base sits on its branch's surface; it moves along as the segment elongates
+            //leaf base sits on its branch's surface; it moves along when the branch bends
             //and outward as the branch thickens
             Vector3 leafPos = sim.LeafBasePos(leaf);
             if (!Valid(leafPos)) { WarnInvalid("leaf"); continue; }
@@ -163,7 +163,7 @@ public class PlantVisuals
             if (v.detached) { if (v.t.position.y < LostBelowY) { v.Destroy(); flowerVisuals[i] = null; } continue; }
 
             Flower flower = sim.Flowers[i];
-            //base at the branch's end point, which moves outward as the branch keeps elongating
+            //base at the branch's end point
             Vector3 flowerPos = sim.FlowerPosition(flower);
             if (!Valid(flowerPos)) { WarnInvalid("flower"); continue; }
             v.t.localPosition = flowerPos;
@@ -301,8 +301,8 @@ public class PlantVisuals
 
             var rb = t.gameObject.AddComponent<Rigidbody>();
             rb.mass = 0.01f;
-            rb.linearDamping = s.fallDamping;        //air resistance: slow, floaty fall
-            rb.angularDamping = s.fallAngularDamping;
+            rb.linearDamping = PlantSettings.FallDamping;        //air resistance: slow, floaty fall
+            rb.angularDamping = PlantSettings.FallAngularDamping;
             rb.angularVelocity = Random.insideUnitSphere * 0.4f;//a slight initial tumble (physics part isn't deterministic anyway)
             //if it overlaps something when detaching (e.g. a neighbor that detached at the same moment), separate gently:
             //Unity's default pushes overlapping bodies apart at up to 10 m/s, which made leaves visibly jump

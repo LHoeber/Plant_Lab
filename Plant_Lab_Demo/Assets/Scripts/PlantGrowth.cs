@@ -3,7 +3,7 @@ using UnityEngine;
 /// <summary>
 /// The plant component: connects the simulation (PlantSimulation), the visuals (PlantVisuals)
 /// and the parameters (a PlantSettings asset, optionally a randomized copy of it).
-/// - Fixed simulation time step (settings.deltaT), decoupled from render framerate.
+/// - Fixed simulation time step (PlantSettings.DeltaT), decoupled from render framerate.
 /// - Seeded: same settings + same seed => same plant.
 /// </summary>
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
@@ -90,8 +90,8 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
 
     void BuildShapes(PlantSettings s)
     {
-        leafShapes = BuildShapes(s.leafPrefabs, s.defaultVoxelResolution, keepRootScale: false);//leaves: visuals set their scale
-        flowerShapes = BuildShapes(s.flowerPrefabs, s.defaultVoxelResolution, keepRootScale: true);//flowers: FlowerMorph keeps it
+        leafShapes = BuildShapes(s.leafPrefabs, PlantSettings.DefaultVoxelResolution, keepRootScale: false);//leaves: visuals set their scale
+        flowerShapes = BuildShapes(s.flowerPrefabs, PlantSettings.DefaultVoxelResolution, keepRootScale: true);//flowers: FlowerMorph keeps it
         shapesBuiltFor = s;
     }
 
@@ -215,7 +215,7 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
         //deltaTime is the actual time since last frame -> can vary depending on actual FPS
         //simulated time, that has passed in the real world, but wasn't simulated yet
         accumulator += Time.deltaTime * simSpeed;//avoids plant growing faster on fast PC
-        float dt = s.deltaT;
+        float dt = PlantSettings.DeltaT;
         int steps = 0;
         //multiple steps are done in one frame if that frame takes too long to process on PC
         while (accumulator >= dt && steps < MaxStepsPerFrame)

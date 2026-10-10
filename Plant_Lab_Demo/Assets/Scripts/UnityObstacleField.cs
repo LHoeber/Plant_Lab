@@ -127,7 +127,7 @@ public class UnityObstacleField : IObstacleField
         Vector3 wDir = plant.TransformDirection(dir).normalized;
         float wRadius = radius * scale;
 
-        //already touching at the start (e.g. pushed toward the wall by elongating segments)?
+        //already touching at the start (e.g. pushed toward the wall by bending)?
         //SphereCast ignores colliders it starts inside, so this case is checked separately
         int n = Physics.OverlapSphereNonAlloc(wFrom, wRadius, overlaps, layers, QueryTriggerInteraction.Ignore);
         for (int i = 0; i < n; i++)

@@ -4,14 +4,14 @@ using UnityEngine;
 /// Everything the simulation knows about one leaf. Plain data, no GameObject:
 /// the visual is created and updated separately by PlantVisuals.
 /// All fields are fixed facts, set once at spawn. The leaf's current position isn't stored,
-/// because it moves as its segment elongates: it's always branch.PointAt(seg, offset).
+/// because it moves when its branch bends: it's always branch.PointAt(seg, offset).
 /// </summary>
 public class Leaf
 {
     public Branch branch;       //branch the leaf grows on
     public int seg;             //segment of that branch the leaf is attached to
-    public float offset;        //fresh distance from that segment's start (keeps its relative position as it stretches)
-    public float arcFresh;      //fresh distance from the branch base (for the distance-from-base falloffs)
+    public float offset;        //distance from that segment's start
+    public float arcPos;      //distance from the branch base (for the distance-from-base falloffs)
     public Vector3 tangent;     //branch direction at the attachment point (rest shape, i.e. as grown)
     public Vector3 outward;     //direction from the center line toward the leaf, perpendicular to tangent (rest shape)
     public float birthTime;     //sim time the leaf spawned

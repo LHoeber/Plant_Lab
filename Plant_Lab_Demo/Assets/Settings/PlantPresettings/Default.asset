@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 6a100951605744ab5a908f8be9ae55ef, type: 3}
-  m_Name: Demo_Plant
+  m_Name: Default
   m_EditorClassIdentifier: Assembly-CSharp::PlantSettings
   growingDuration: 20
   enableFlowering: 1
@@ -19,7 +19,7 @@ MonoBehaviour:
   fruitingDuration: 10
   growthSpeed: 0.125
   maxLength: 2
-  directionBias: 2
+  directionBias: 4
   perturbationStd: 0.7
   maxRadius: 0.08
   radiusDepthFactor: 0.65
@@ -27,26 +27,24 @@ MonoBehaviour:
   endTaperLength: 0.3
   radialGrowthTime: 8
   spawnStartFraction: 0.1
-  spawnCheckInterval: 0.04
+  spawnCheckInterval: 0.03
   spawnProbability: 0.8
   leafProbabilityAtEnd: 0.4
   phyllotaxisNoiseDeg: 10
-  branchProbability: 0.2
+  branchProbability: 0.15
   branchStartFraction: 0.2
   maxDepth: 3
   branchElevationDeg: 33
   sideBranchLengthRatio: 0.5
   lengthFalloff: 0.8
-  leafPrefabs:
-  - {fileID: 6210749114086206293, guid: 675e43d6d7aeb4be0a2371a5dddaa6f8, type: 3}
+  leafPrefabs: []
   leafGrowthDuration: 5
   maxLeafSize: 0.125
   leafSizeFalloff: 0.5
   leafSizeNoise: 0.2
   leafElevationDeg: -20
-  flowerPrefabs:
-  - {fileID: 4799451868281231511, guid: f991fc312701640c8a3e5cec039ce8f4, type: 3}
-  flowerProbability: 0.3
+  flowerPrefabs: []
+  flowerProbability: 0.65
   flowerDelay: 5
   budGrowDuration: 3
   flowerOpenDuration: 8
