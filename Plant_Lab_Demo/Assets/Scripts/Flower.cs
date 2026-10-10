@@ -16,6 +16,7 @@ public class Flower
     public Quaternion tilt = Quaternion.identity; //its own tilt away from obstacles (rest shape)
     public float sizeCap = float.PositiveInfinity; //it got stuck at this size and stopped growing
     public bool movedThisStep;  //contact solving: tilted in this step (check it again in the next pass)
+    public float tiltUsed;      //degrees it has already tilted in the current step (speed limit)
     public float rollDeg;       //random rotation around the flower's own axis, so flowers don't all line up
     public int variant;         //index into PlantSettings.flowerPrefabs (-1 if there are none)
     public bool setsFruit;      //decided at the start of the Fruiting phase: develops into a fruit (otherwise it withers then)

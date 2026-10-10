@@ -201,7 +201,9 @@ public class PlantVisuals
             int variant = sim.Flowers[i].variant;
             if (v == null || v.t == null || v.detached || flowerShapes == null || variant < 0 || variant >= flowerShapes.Length) continue;
             OrganCompound c = flowerShapes[variant];
-            if (c != null) DrawBoxes(v.morph != null ? c.BoxesFor(v.morph.DominantState) : c.union, v.t);
+            Flower fl = sim.Flowers[i];
+            //the same pose the collision check uses (drawn at the flower's actual size via its transform)
+            if (c != null) DrawBoxes(c.BoxesFor(sim.FlowerGrowth(fl), sim.FruitProgress(fl), sim.FlowerWither(fl), out _), v.t);
         }
         Gizmos.matrix = Matrix4x4.identity;
     }

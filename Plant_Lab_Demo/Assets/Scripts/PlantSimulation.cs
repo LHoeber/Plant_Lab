@@ -450,18 +450,20 @@ public class PlantSimulation
         bool anyBend = false;
         foreach (Branch b in Branches)
         {
-            b.RelaxBends(dt, s.bendRelaxTime, s.bendSettleTime);
+            b.RelaxBends(dt, s.bendRelaxTime, s.bendSettleTime, SimTime - b.lastContactTime < 1f);
             anyBend |= b.HasBends;
         }
         if (anyBend) foreach (Branch b in Branches) b.UpdateGeometry(this);
         if (Obstacles == null) return;
 
         bool stillTouching = false;
-        //speed limits, split over the passes of this step
-        float nodeStep = s.bendSpeed * dt / s.contactIterations;
-        float organStep = 3f * nodeStep;
-        foreach (Leaf leaf in Leaves) leaf.movedThisStep = false;
-        foreach (Flower f in Flowers) f.movedThisStep = false;
+        //speed limits: how far each node / organ may turn in this whole step, shared by all contacts and passes
+        float nodeStep = s.bendSpeed * dt;
+        float organStep = 1.5f * nodeStep;
+        moveStep = s.bendMoveSpeed * dt;
+        foreach (Branch b in Branches) b.ResetBendBudget();
+        foreach (Leaf leaf in Leaves) { leaf.movedThisStep = false; leaf.tiltUsed = 0f; }
+        foreach (Flower f in Flowers) { f.movedThisStep = false; f.tiltUsed = 0f; }
         for (int pass = 0; pass < s.contactIterations; pass++)
         {
             bool any = false;
@@ -489,7 +491,7 @@ public class PlantSimulation
                 if (pass > 0 && !leaf.branch.affectedLastPass && !leaf.movedThisStep) continue;
                 if (LeafWither(leaf) >= 1f || !LeafPush(leaf, out Vector3 push, out Vector3 at)) continue;
                 any = true;
-                push = TiltOrgan(ref leaf.tilt, leaf.branch.RotAt(leaf.seg), LeafBasePos(leaf), push, at, s.leafMaxTiltDeg, organStep);
+                push = TiltOrgan(ref leaf.tilt, ref leaf.tiltUsed, leaf.branch.RotAt(leaf.seg), LeafBasePos(leaf), push, at, s.leafMaxTiltDeg, organStep);
                 leaf.movedThisStep = true;
                 if (push.sqrMagnitude > 1e-12f) PushBranch(leaf.branch, leaf.seg, at, push, nodeStep);
             }
@@ -499,7 +501,7 @@ public class PlantSimulation
                 if (pass > 0 && !f.branch.affectedLastPass && !f.movedThisStep) continue;
                 if (FlowerWither(f) >= 1f || !FlowerPush(f, out Vector3 push, out Vector3 at)) continue;
                 any = true;
-                push = TiltOrgan(ref f.tilt, f.branch.RotAt(f.seg + 1), FlowerPosition(f), push, at, s.flowerMaxTiltDeg, organStep);
+                push = TiltOrgan(ref f.tilt, ref f.tiltUsed, f.branch.RotAt(f.seg + 1), FlowerPosition(f), push, at, s.flowerMaxTiltDeg, organStep);
                 f.movedThisStep = true;
                 if (push.sqrMagnitude > 1e-12f) PushBranch(f.branch, f.seg, at, push, nodeStep);
             }
@@ -517,8 +519,8 @@ public class PlantSimulation
     }
 
     /// <summary>
-    /// Whatever still touches after all passes stops growing at its current size (shrinking a hair to get free):
-    /// organs stop growing, branch pieces stop thickening.
+    /// Whatever still touches after all passes stops growing at its current size: organs stop growing, branch pieces
+    /// stop thickening. While it still touches, it shrinks very slowly (0.5% per step) to get free.
     /// </summary>
     void StopStuckOrgans()
     {
@@ -531,47 +533,54 @@ public class PlantSimulation
                 if (r < 1e-4f) continue;
                 if (Obstacles.CapsulePenetration(b.nodes[k], b.nodes[k + 1], r + 0.5f * Settings.obstacleClearance, out _))
                 {
-                    b.nodeRadiusCap[k] = b.nodeRadius[k] * 0.97f;
-                    b.nodeRadiusCap[k + 1] = b.nodeRadius[k + 1] * 0.97f;
+                    b.nodeRadiusCap[k] = b.nodeRadius[k] * StuckShrink;
+                    b.nodeRadiusCap[k + 1] = b.nodeRadius[k + 1] * StuckShrink;
                 }
             }
         }
         foreach (Leaf leaf in Leaves)
-            if (LeafWither(leaf) < 1f && LeafPush(leaf, out _, out _)) leaf.sizeCap = LeafSize(leaf) * 0.97f;
+            if (LeafWither(leaf) < 1f && LeafPush(leaf, out _, out _)) leaf.sizeCap = LeafSize(leaf) * StuckShrink;
         foreach (Flower f in Flowers)
-            if (FlowerWither(f) < 1f && FlowerPush(f, out _, out _)) f.sizeCap = FlowerSize(f) * 0.97f;
+            if (FlowerWither(f) < 1f && FlowerPush(f, out _, out _)) f.sizeCap = FlowerSize(f) * StuckShrink;
     }
+    const float StuckShrink = 0.995f;
 
     /// <summary>
     /// Bends a branch so that point X moves by `push`: nodes from the touching segment back to the plant's base
-    /// (through parent branches) turn a little; how much depends on their flexibility (1 / radius^3, like a real beam)
-    /// and their leverage (how much turning there moves X in the push direction). Weighted least squares: the softest
-    /// nodes with the best leverage do most of the work. Nodes where turning would mostly move X sideways
-    /// (poor leverage) don't take part, and no node turns faster than maxStepDeg.
+    /// (through parent branches) turn a little. Each node's flexibility is (bendFlexibleRadius / radius)^3, like a
+    /// real beam, and its leverage is how much turning there moves X in the push direction. Regularized least squares:
+    /// soft nodes with good leverage do the work; if only stiff nodes are available, the push is mostly NOT resolved
+    /// (the organ stops growing instead of the trunk swinging). Nodes with poor leverage (turning would mostly move X
+    /// sideways) don't take part; nodes turn at most maxStepDeg per step, and X moves at most bendMoveSpeed.
     /// </summary>
     void PushBranch(Branch b, int seg, Vector3 X, Vector3 push, float maxStepDeg)
     {
         float mag = push.magnitude * 1.02f;//a hair more, so it ends up just clear instead of just touching
         if (mag < 1e-7f) return;
         Vector3 dirP = push / push.magnitude;
-        float minRadius = 0.15f * Settings.maxRadius;//the thinnest parts don't count as infinitely soft
+        float r0 = Settings.bendFlexibleRadius;
+        //regularization: the "price" of not resolving the push. A node of radius r0 with a lever of 0.1 units
+        //resolves about half of the push per pass; thick nodes almost nothing
+        const float leverScale = 0.1f;
+        float lambda = leverScale * leverScale;
 
         chainBranch.Clear(); chainNode.Clear(); chainWeight.Clear(); chainLever.Clear(); chainAxis.Clear();
         Branch cur = b;
         int node = Mathf.Min(seg, b.nodes.Count - 1);
-        float sum = 0f;
+        float sum = lambda;
         while (cur != null)
         {
+            cur.lastContactTime = SimTime;//pressed: no elastic springback for now
             for (int i = node; i >= 0; i--)
             {
                 Vector3 arm = X - cur.nodes[i];
                 Vector3 axis = Vector3.Cross(arm, dirP);
                 float lever = axis.magnitude;//how far X moves in the push direction per radian of turning here
-                float armLength = arm.magnitude;
                 //poor leverage: turning here would mostly move X sideways, not away from the obstacle
-                if (lever < 1e-6f || lever < 0.2f * armLength) continue;
-                float r = Mathf.Max(cur.nodeRadius[i], minRadius);
-                float flexibility = 1f / (r * r * r);
+                if (lever < 1e-6f || lever < 0.2f * arm.magnitude) continue;
+                float r = Mathf.Max(cur.nodeRadius[i], 0.25f * r0);//the very thinnest parts aren't infinitely soft
+                float ratio = r0 / r;
+                float flexibility = ratio * ratio * ratio;
                 chainBranch.Add(cur); chainNode.Add(i); chainWeight.Add(flexibility); chainLever.Add(lever); chainAxis.Add(axis / lever);
                 sum += flexibility * lever * lever;
             }
@@ -579,15 +588,20 @@ public class PlantSimulation
             node = Mathf.Min(cur.attachSeg, cur.parent.nodes.Count - 1);
             cur = cur.parent;
         }
-        if (sum < 1e-12f) return;
+        if (chainBranch.Count == 0) return;
+        //how far X would move with these angles; never faster than bendMoveSpeed
+        float moved = 0f;
+        for (int j = 0; j < chainBranch.Count; j++) moved += chainWeight[j] * chainLever[j] * chainLever[j] * mag / sum;
+        float slow = moved > moveStep ? moveStep / moved : 1f;
         for (int j = 0; j < chainBranch.Count; j++)
         {
-            float angle = chainWeight[j] * chainLever[j] * mag / sum;//radians
+            float angle = chainWeight[j] * chainLever[j] * mag / sum * slow;//radians
             float applied = chainBranch[j].BendAtNode(chainNode[j], Quaternion.AngleAxis(angle * Mathf.Rad2Deg, chainAxis[j]),
                                                       Settings.maxJointBendDeg, maxStepDeg);
             if (applied > 0f) chainBranch[j].movedThisPass = true;
         }
     }
+    float moveStep;//how far a touching point may be moved by bending in this step
     readonly List<Branch> chainBranch = new List<Branch>();
     readonly List<int> chainNode = new List<int>();
     readonly List<float> chainWeight = new List<float>(), chainLever = new List<float>();
@@ -595,16 +609,19 @@ public class PlantSimulation
 
     /// <summary>
     /// Tilts an organ around its base (pivot) so its contact point moves by `push`: total tilt within maxDeg,
-    /// at most maxStepDeg now. The tilt is stored in the rest shape, so later bends of the branch carry it along.
+    /// at most stepBudgetDeg per step (`used` counts what this step has used already).
+    /// The tilt is stored in the rest shape, so later bends of the branch carry it along.
     /// Returns the part of the push that's left for the branch.
     /// </summary>
-    Vector3 TiltOrgan(ref Quaternion tilt, Quaternion branchBend, Vector3 pivot, Vector3 push, Vector3 at, float maxDeg, float maxStepDeg)
+    Vector3 TiltOrgan(ref Quaternion tilt, ref float used, Quaternion branchBend, Vector3 pivot, Vector3 push, Vector3 at,
+                      float maxDeg, float stepBudgetDeg)
     {
         Vector3 lever = at - pivot;
         float l2 = lever.sqrMagnitude;
         Vector3 cross = Vector3.Cross(lever, push);
-        if (l2 < 1e-10f || cross.sqrMagnitude < 1e-16f) return push;
-        float angle = Mathf.Min(cross.magnitude / l2 * 1.02f, maxStepDeg * Mathf.Deg2Rad);//radians, speed-limited
+        float left = stepBudgetDeg - used;
+        if (l2 < 1e-10f || cross.sqrMagnitude < 1e-16f || left <= 1e-5f) return push;
+        float angle = Mathf.Min(cross.magnitude / l2 * 1.02f, left * Mathf.Deg2Rad);//radians, speed-limited
         Vector3 axis = cross.normalized;
         Quaternion restTurn = Quaternion.Inverse(branchBend) * Quaternion.AngleAxis(angle * Mathf.Rad2Deg, axis) * branchBend;
         Quaternion wanted = Quaternion.Normalize(restTurn * tilt);
@@ -618,6 +635,7 @@ public class PlantSimulation
         }
         if (float.IsNaN(wanted.x)) return push;
         tilt = wanted;
+        used += angle * fraction * Mathf.Rad2Deg;
         Vector3 rest = push - Vector3.Cross(axis * (angle * fraction), lever);
         return Vector3.Dot(rest, push) > 0f ? rest : Vector3.zero;
     }
@@ -637,12 +655,7 @@ public class PlantSimulation
         push = at = Vector3.zero;
         if (FlowerShapes == null || f.variant < 0 || f.variant >= FlowerShapes.Length || FlowerShapes[f.variant] == null) return false;
         OrganCompound shape = FlowerShapes[f.variant];
-        OrganBox[] boxes = shape.union;
-        float morphScale = 1f;
-        if (shape.morph != null)
-        {
-            boxes = shape.BoxesFor(shape.morph.StateFor(FlowerGrowth(f), FruitProgress(f), FlowerWither(f), out morphScale));
-        }
+        OrganBox[] boxes = shape.BoxesFor(FlowerGrowth(f), FruitProgress(f), FlowerWither(f), out float morphScale);
         return OrganPush(shape, boxes, FlowerPosition(f), FlowerRotation(f), FlowerSize(f) * morphScale * shape.rootScale, out push, out at);
     }
 

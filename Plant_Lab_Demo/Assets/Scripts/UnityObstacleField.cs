@@ -11,10 +11,13 @@ public class UnityObstacleField : IObstacleField
     readonly LayerMask layers;
     readonly Collider[] overlaps = new Collider[8];//reused buffer for overlap queries
 
-    public UnityObstacleField(Transform plant, LayerMask layers)
+    readonly float stepOut;//how far to push per pass when the shortest way out would lead through the obstacle
+
+    public UnityObstacleField(Transform plant, LayerMask layers, float stepOut)
     {
         this.plant = plant;
         this.layers = layers;
+        this.stepOut = stepOut;
     }
 
     public bool AnyWithin(Vector3 center, float radius)
@@ -93,11 +96,21 @@ public class UnityObstacleField : IObstacleField
     {
         Vector3 total = Vector3.zero;
         bool any = false;
+        Vector3 plantBase = plant.position;
+        float scale0 = plant.lossyScale.x;
         for (int i = 0; i < n; i++)
         {
             Collider other = overlaps[i];
             if (!Physics.ComputePenetration(probe, wPos, wRot, other, other.transform.position, other.transform.rotation,
                                             out Vector3 dir, out float dist) || dist <= 0f) continue;
+            //thin obstacles (e.g. 3 cm glass): if a part is more than halfway in, the shortest way out is the far side.
+            //never push through: only toward the side the plant grows on (where its base is), a little per pass
+            Vector3 plantSide = plantBase - other.ClosestPoint(plantBase);
+            if (plantSide.sqrMagnitude > 1e-10f && Vector3.Dot(dir, plantSide) < 0f)
+            {
+                dir = plantSide.normalized;
+                dist = Mathf.Max(stepOut * scale0, 1e-4f);
+            }
             float already = Vector3.Dot(total, dir);
             if (already < dist) total += dir * (dist - already);
             any = true;

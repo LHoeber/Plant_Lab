@@ -76,7 +76,7 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
         sim = s != null ? new PlantSimulation(s, seed) : null;
         if (sim != null && obstacleLayers.value != 0)
         {
-            sim.Obstacles = new UnityObstacleField(transform, obstacleLayers);
+            sim.Obstacles = new UnityObstacleField(transform, obstacleLayers, 0.5f * s.obstacleClearance);
             //leaves and flowers need their size to be checked against obstacles before they appear
             if (s != shapesBuiltFor) BuildShapes(s);//prefabs are voxelized once per settings asset, not on every regrow
             sim.LeafShapes = leafShapes;
@@ -104,13 +104,13 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
             if (prefabs[i] == null) continue;
             var settingsOnPrefab = prefabs[i].GetComponent<OrganCollisionShape>();
             int res = settingsOnPrefab != null ? settingsOnPrefab.resolution : defaultResolution;
-            shapes[i] = OrganVoxelizer.Build(prefabs[i], res);
-            if (keepRootScale) shapes[i].rootScale = prefabs[i].transform.localScale.x;
-            //flowers: copy the morph settings, so the simulation knows each flower's current state and size
+            //flowers: copy the morph settings, so the simulation knows each flower's current pose and size,
+            //and voxelize every pose (states + in-between steps), so the collision shape changes gradually
             var morph = prefabs[i].GetComponent<FlowerMorph>();
+            MorphInfo info = null;
             if (morph != null)
             {
-                shapes[i].morph = new MorphInfo
+                info = new MorphInfo
                 {
                     stageNames = morph.stages.ConvertAll(st => st.shapeName).ToArray(),
                     stageReachedAt = morph.stages.ConvertAll(st => st.reachedAt).ToArray(),
@@ -120,8 +120,12 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
                     wiltFruitState = morph.wiltFruitStateName,
                     startScale = morph.startScale,
                     scaleExponent = morph.scaleExponent,
+                    smooth = morph.smoothStages,
                 };
             }
+            shapes[i] = OrganVoxelizer.Build(prefabs[i], res, info?.BuildPoses());
+            shapes[i].morph = info;
+            if (keepRootScale) shapes[i].rootScale = prefabs[i].transform.localScale.x;
         }
         return shapes;
     }

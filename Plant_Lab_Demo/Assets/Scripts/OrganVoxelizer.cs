@@ -3,7 +3,7 @@ using UnityEngine;
 
 /// <summary>
 /// Builds an OrganCompound from a leaf/flower prefab (Unity side, once at the start):
-/// 1. takes the prefab's mesh in every morph state (basis + each blend shape at 100)
+/// 1. takes the prefab's mesh in every given pose (blend shape weights; just the basis for leaves)
 /// 2. marks every grid cell its surface passes through
 /// 3. fills closed volumes from outside inward (flood fill): enclosed cells become solid,
 ///    anything connected to the outside (a cup's opening, gaps between petals) stays free
@@ -11,9 +11,11 @@ using UnityEngine;
 /// </summary>
 public static class OrganVoxelizer
 {
-    public static OrganCompound Build(GameObject prefab, int resolution)
+    /// <param name="poses">blend shape weights (0..1, by name) for every pose to voxelize; null = just the basis (leaves)</param>
+    public static OrganCompound Build(GameObject prefab, int resolution, List<Dictionary<string, float>> poses = null)
     {
-        //a temporary instance (far away, removed right away), so meshes can be baked in any morph state
+        if (poses == null) poses = new List<Dictionary<string, float>> { new Dictionary<string, float>() };
+        //a temporary instance (far away, removed right away), so meshes can be baked in any pose
         GameObject probe = Object.Instantiate(prefab, new Vector3(0f, -10000f, 0f), Quaternion.identity);
         Transform root = probe.transform;
         root.localScale = Vector3.one;//measure at size 1
@@ -21,21 +23,11 @@ public static class OrganVoxelizer
         var skinned = probe.GetComponentsInChildren<SkinnedMeshRenderer>(true);
         var filters = probe.GetComponentsInChildren<MeshFilter>(true);
 
-        //states: basis ("") + every blend shape name found on any part
-        var states = new List<string> { "" };
-        foreach (var smr in skinned)
-            if (smr.sharedMesh != null)
-                for (int i = 0; i < smr.sharedMesh.blendShapeCount; i++)
-                {
-                    string n = smr.sharedMesh.GetBlendShapeName(i);
-                    if (!states.Contains(n)) states.Add(n);
-                }
-
-        //triangles (3 points each, in the root's space) per state
-        var tris = new List<Vector3>[states.Count];
+        //triangles (3 points each, in the root's space) per pose
+        var tris = new List<Vector3>[poses.Count];
         var baked = new Mesh();
         bool warned = false;
-        for (int st = 0; st < states.Count; st++)
+        for (int st = 0; st < poses.Count; st++)
         {
             tris[st] = new List<Vector3>();
             foreach (var smr in skinned)
@@ -43,9 +35,17 @@ public static class OrganVoxelizer
                 Mesh m = smr.sharedMesh;
                 if (m == null) continue;
                 for (int i = 0; i < m.blendShapeCount; i++) smr.SetBlendShapeWeight(i, 0f);
-                int idx = st > 0 ? m.GetBlendShapeIndex(states[st]) : -1;
-                if (idx >= 0) smr.SetBlendShapeWeight(idx, 100f);
-                smr.BakeMesh(baked);//the mesh as it looks in this state (a readable copy)
+                //weights of shapes this part doesn't have go to its other shapes (as in FlowerMorph,
+                //where a part without e.g. a wilted shape just keeps its normal shape)
+                float total = 0f, present = 0f;
+                foreach (var kv in poses[st]) { total += kv.Value; if (m.GetBlendShapeIndex(kv.Key) >= 0) present += kv.Value; }
+                float rescale = present > 1e-6f ? total / present : 0f;
+                foreach (var kv in poses[st])
+                {
+                    int idx = m.GetBlendShapeIndex(kv.Key);
+                    if (idx >= 0) smr.SetBlendShapeWeight(idx, kv.Value * rescale * 100f);
+                }
+                smr.BakeMesh(baked);//the mesh as it looks in this pose (a readable copy)
                 AddTriangles(baked, toRoot * smr.transform.localToWorldMatrix, tris[st]);
             }
             foreach (var mf in filters)
@@ -66,7 +66,7 @@ public static class OrganVoxelizer
         Object.Destroy(baked);
         Object.Destroy(probe);
 
-        //one grid for all states, so their solid cells can be combined directly
+        //one grid for all poses, so their solid cells can be combined directly
         bool any = false;
         Bounds all = new Bounds();
         foreach (var list in tris)
@@ -75,11 +75,11 @@ public static class OrganVoxelizer
                 if (!any) { all = new Bounds(p, Vector3.zero); any = true; }
                 else all.Encapsulate(p);
             }
-        var result = new OrganCompound { stateNames = states.ToArray(), perState = new OrganBox[states.Count][] };
+        var result = new OrganCompound { poses = new OrganBox[poses.Count][] };
         if (!any)
         {
             result.union = new OrganBox[0];
-            for (int st = 0; st < states.Count; st++) result.perState[st] = result.union;
+            for (int st = 0; st < poses.Count; st++) result.poses[st] = result.union;
             return result;
         }
         float longest = Mathf.Max(all.size.x, Mathf.Max(all.size.y, all.size.z));
@@ -90,11 +90,11 @@ public static class OrganVoxelizer
         var grid = new Grid(nx, ny, nz, origin, cell);
 
         var unionSolid = new bool[nx * ny * nz];
-        for (int st = 0; st < states.Count; st++)
+        for (int st = 0; st < poses.Count; st++)
         {
             bool[] surface = grid.MarkSurface(tris[st]);
             bool[] solid = grid.FillEnclosed(surface);
-            result.perState[st] = grid.MergeIntoBoxes(solid);
+            result.poses[st] = grid.MergeIntoBoxes(solid);
             for (int i = 0; i < solid.Length; i++) unionSolid[i] |= solid[i];
         }
         result.union = grid.MergeIntoBoxes(unionSolid);

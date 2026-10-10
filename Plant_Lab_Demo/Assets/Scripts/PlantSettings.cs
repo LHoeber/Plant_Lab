@@ -164,9 +164,14 @@ public class PlantSettings : ScriptableObject
     [Range(0f, 90f)] public float flowerMaxTiltDeg = 30f;
     [Tooltip("Maximum bend at a single node (degrees). If all nodes are at their limit, the touching organ stops growing.")]
     [Range(1f, 90f)] public float maxJointBendDeg = 35f;
-    [Tooltip("How fast a node may bend (degrees per sim second). Organs may tilt 3x as fast. If that can't keep up " +
+    [Tooltip("How fast a node may bend (degrees per sim second). Organs may tilt 1.5x as fast. If that can't keep up " +
              "with growth, the touching part stops growing instead of passing through.")]
     [Range(0.5f, 90f)] public float bendSpeed = 15f;
+    [Tooltip("How fast a touching point may be moved away by bending (units per sim second), however many nodes help.")]
+    [Range(0.005f, 1f)] public float bendMoveSpeed = 0.05f;
+    [Tooltip("Branch radius that still bends easily. Stiffness grows with (radius / this)^3: a node twice as thick " +
+             "is 8x stiffer. Much thicker parts barely give way; the touching organ stops growing instead.")]
+    [Range(0.001f, 0.1f)] public float bendFlexibleRadius = 0.01f;
     [Tooltip("Sim seconds for a bend to spring back halfway once nothing pushes anymore (elastic part).")]
     [Range(0.1f, 60f)] public float bendRelaxTime = 3f;
     [Tooltip("Sim seconds for a bend to become permanent (the branch 'remembers' it, like growth adapting).")]

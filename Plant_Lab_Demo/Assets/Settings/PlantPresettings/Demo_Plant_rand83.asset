@@ -13,9 +13,14 @@ MonoBehaviour:
   m_Name: Demo_Plant_rand83
   m_EditorClassIdentifier: Assembly-CSharp::PlantSettings
   deltaT: 0.05
+  growingMaxDuration: 120
+  enableFlowering: 1
+  floweringDuration: 30
+  enableFruiting: 1
+  fruitingDuration: 30
   growthSpeed: 0.18055342
   segmentLength: 0.06887003
-  segmentStretchFactor: 2.0968335
+  segmentStretchFactor: 1
   elongationTime: 6.2424064
   maxLength: 6.4807577
   directionBias: 0.34085724
@@ -34,7 +39,7 @@ MonoBehaviour:
   spawnCheckInterval: 0.011427616
   spawnProbability: 0.63967085
   leafProbabilityAtEnd: 0.47799844
-  leafEndBoostExponent: 1.7923574
+  leafEndBoostExponent: 1.67
   phyllotaxisNoiseDeg: 11.473323
   branchProbability: 0.4112308
   branchStartFraction: 0.097793125
@@ -58,7 +63,32 @@ MonoBehaviour:
   - {fileID: 4799451868281231511, guid: f991fc312701640c8a3e5cec039ce8f4, type: 3}
   flowerProbability: 0.7
   flowerDelay: 2
+  budGrowDuration: 3
   flowerOpenDuration: 8
   flowerOpenExponent: 1
   maxFlowerSize: 1
   flowerSizeNoise: 0.1
+  fruitSetProbability: 0.6
+  fruitDevelopDuration: 15
+  fruitDevelopExponent: 1
+  obstacleClearance: 0.01
+  leafMaxTiltDeg: 45
+  flowerMaxTiltDeg: 30
+  maxJointBendDeg: 35
+  bendSpeed: 15
+  bendRelaxTime: 3
+  bendSettleTime: 15
+  contactIterations: 4
+  defaultVoxelResolution: 10
+  witherWaveDuration: 30
+  witherJitter: 2
+  leafWitherTime: 6
+  flowerWitherTime: 6
+  stemWitherTime: 20
+  stemWitheredRadiusFraction: 0.7
+  witheredSaturation: 0.35
+  witheredHue: 0.08
+  witherHueShift: 0.7
+  witheredBrightness: 0.6
+  fallDamping: 4
+  fallAngularDamping: 1

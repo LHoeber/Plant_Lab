@@ -51,6 +51,7 @@ public class Branch
     public readonly List<Quaternion> jointBend = new List<Quaternion>();   //current bend at this node
     public readonly List<Quaternion> jointTarget = new List<Quaternion>(); //bend it relaxes back to (identity = as grown; drifts toward the bend = it becomes permanent)
     public readonly List<Quaternion> nodeRot = new List<Quaternion>();     //rotation from rest shape to current shape after this node (cache)
+    public readonly List<float> bendUsed = new List<float>();              //degrees this node has already turned in the current step (speed limit)
 
     public readonly List<Branch> children = new List<Branch>();
     public readonly List<Leaf> leaves = new List<Leaf>();
@@ -97,6 +98,7 @@ public class Branch
         jointBend.Add(Quaternion.identity);
         jointTarget.Add(Quaternion.identity);
         nodeRot.Add(parent != null ? parent.RotAt(attachSeg) : Quaternion.identity);
+        bendUsed.Add(0f);
         tipDir = dir;
         tipNormal = normal;
     }
@@ -216,7 +218,16 @@ public class Branch
             {
                 CommitSegment(s.segmentLength, sim);
                 //new direction (light, noise) is decided in the current shape, then stored in the rest shape
-                SetTipDirNow(sim.NextDirection(this));
+                Vector3 next = sim.NextDirection(this);
+                //if it would lead straight back into an obstacle the tip is sliding along (e.g. light behind the glass),
+                //slide right away instead of committing a tiny segment at the obstacle (which makes a zigzag)
+                if (sim.Obstacles != null &&
+                    sim.Obstacles.Cast(TipPosition, next, s.obstacleClearance, 0.5f * s.segmentLength, out _, out Vector3 n))
+                {
+                    Vector3 along = Vector3.ProjectOnPlane(next, n);
+                    if (along.sqrMagnitude > 0.05f * 0.05f) next = along.normalized;
+                }
+                SetTipDirNow(next);
             }
             else break;
         }
@@ -250,6 +261,7 @@ public class Branch
         jointBend.Add(Quaternion.identity);
         jointTarget.Add(Quaternion.identity);
         nodeRot.Add(nodeRot[nodeRot.Count - 1]);//no bend at the new node yet
+        bendUsed.Add(0f);
         committedLength += length;
         nodeArcFresh.Add(committedLength);
         tipSegLen -= length;//remove already committed part, before tip continues growing
@@ -319,16 +331,24 @@ public class Branch
 
     // --- bending ---
 
+    /// <summary>Starts a new step for the speed limit: every node may turn by up to its budget again.</summary>
+    public void ResetBendBudget()
+    {
+        for (int i = 0; i < bendUsed.Count; i++) bendUsed[i] = 0f;
+    }
+
     /// <summary>
     /// Turns everything after node `node` by the rotation `turn` (given in the current shape, around that node).
-    /// At most maxStepDeg in this call, and the node's total bend stays within maxDeg.
-    /// Returns the fraction of the requested turn that was applied.
+    /// The node turns at most stepBudgetDeg per step in total (shared by all contacts pushing on it in this step),
+    /// and its total bend stays within maxDeg. Returns the fraction of the requested turn that was applied.
     /// </summary>
-    public float BendAtNode(int node, Quaternion turn, float maxDeg, float maxStepDeg)
+    public float BendAtNode(int node, Quaternion turn, float maxDeg, float stepBudgetDeg)
     {
         float requested = Quaternion.Angle(Quaternion.identity, turn);
         if (requested < 1e-5f || float.IsNaN(requested)) return 0f;
-        float fraction = Mathf.Min(1f, maxStepDeg / requested);//speed limit
+        float left = stepBudgetDeg - bendUsed[node];
+        if (left <= 1e-5f) return 0f;//this node has used up its turning for this step
+        float fraction = Mathf.Min(1f, left / requested);//speed limit
         if (fraction < 1f) turn = Quaternion.Slerp(Quaternion.identity, turn, fraction);
 
         //express the turn in the node's own frame: new rotation after the node = turn * old rotation
@@ -346,6 +366,7 @@ public class Branch
         }
         if (float.IsNaN(wanted.x) || float.IsNaN(wanted.w)) return 0f;//never let an invalid rotation in
         jointBend[node] = wanted;
+        bendUsed[node] += requested * fraction;
         return fraction;
     }
 
@@ -353,9 +374,10 @@ public class Branch
     /// Elastic + plastic behavior of all joints over a time step: bends relax toward their target
     /// (elastic springback), and the target drifts toward the current bend (it becomes permanent).
     /// </summary>
-    public void RelaxBends(float dt, float relaxTime, float settleTime)
+    public void RelaxBends(float dt, float relaxTime, float settleTime, bool inContact)
     {
-        float relax = 1f - Mathf.Exp(-dt / Mathf.Max(1e-3f, relaxTime));
+        //while (or shortly after) being pressed against something, springing back would only push it back in
+        float relax = inContact ? 0f : 1f - Mathf.Exp(-dt / Mathf.Max(1e-3f, relaxTime));
         float settle = 1f - Mathf.Exp(-dt / Mathf.Max(1e-3f, settleTime));
         for (int i = 0; i < jointBend.Count; i++)
         {
@@ -385,6 +407,9 @@ public class Branch
 
     /// <summary>Contact solving: bent in the current pass / bent or carried along (parent bent) in the last pass.</summary>
     public bool movedThisPass, affectedLastPass;
+
+    /// <summary>Sim time this branch last had to give way to a contact (no elastic springback while still pressed).</summary>
+    public float lastContactTime = float.NegativeInfinity;
 
     /// <summary>Does any node currently have a bend (or a target to return to)?</summary>
     public bool HasBends

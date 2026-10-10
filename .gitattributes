@@ -1,12 +1,15 @@
-*.blend filter=lfs diff=lfs merge=lfs -text
-*.fbx   filter=lfs diff=lfs merge=lfs -text
-*.glb   filter=lfs diff=lfs merge=lfs -text
-*.png   filter=lfs diff=lfs merge=lfs -text
-*.jpg   filter=lfs diff=lfs merge=lfs -text
-*.psd   filter=lfs diff=lfs merge=lfs -text
-*.tga   filter=lfs diff=lfs merge=lfs -text
-*.exr   filter=lfs diff=lfs merge=lfs -text
-*.hdr   filter=lfs diff=lfs merge=lfs -text
-*.wav   filter=lfs diff=lfs merge=lfs -text
-*.blend !text !filter !merge !diff
-*.fbx !text !filter !merge !diff
+# Git LFS is currently disabled on GitHub for this repo, so binaries are stored normally for now.
+# To switch back to LFS later: change "binary" to "filter=lfs diff=lfs merge=lfs -text"
+# and run "git lfs migrate import" (see project notes).
+#
+# "binary" = no line-ending conversion, no text diff or merge: protects these files from corruption.
+*.blend binary
+*.fbx   binary
+*.glb   binary
+*.png   binary
+*.jpg   binary
+*.psd   binary
+*.tga   binary
+*.exr   binary
+*.hdr   binary
+*.wav   binary
