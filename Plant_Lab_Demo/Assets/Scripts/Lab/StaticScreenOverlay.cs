@@ -21,7 +21,19 @@ public class StaticScreenOverlay : MonoBehaviour
 
     void Awake()
     {
-        tex = new Texture2D(width, height, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, name = "ScreenOverlay" };
+        tex = Generate(width, height, vignette, glare, scanlines, scanlinePeriod);
+        var img = GetComponent<RawImage>();
+        img.texture = tex;
+        img.raycastTarget = false;//never blocks button presses
+    }
+
+    /// <summary>
+    /// The overlay texture: white where it brightens (glare), black where it darkens, alpha = how much.
+    /// Used by this UI overlay and by the 3D console's screen material.
+    /// </summary>
+    public static Texture2D Generate(int width, int height, float vignette, float glare, float scanlines, int scanlinePeriod)
+    {
+        var tex = new Texture2D(width, height, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, name = "ScreenOverlay" };
         var px = new Color32[width * height];
         for (int y = 0; y < height; y++)
             for (int x = 0; x < width; x++)
@@ -44,9 +56,7 @@ public class StaticScreenOverlay : MonoBehaviour
             }
         tex.SetPixels32(px);
         tex.Apply(false, true);
-        var img = GetComponent<RawImage>();
-        img.texture = tex;
-        img.raycastTarget = false;//never blocks button presses
+        return tex;
     }
 
     void OnDestroy()

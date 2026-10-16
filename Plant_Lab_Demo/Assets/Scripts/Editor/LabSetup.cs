@@ -18,7 +18,7 @@ public static class LabSetup
     static readonly Color PanelColor = new Color(0.13f, 0.14f, 0.15f);
     static readonly Color FrameColor = new Color(0.05f, 0.05f, 0.055f);
     static readonly Color ArrowButtonColor = new Color(0.32f, 0.34f, 0.36f);
-    static readonly Color InterventionColor = new Color(0.55f, 0.6f, 0.65f);//identical for all four, no icon, no text
+    static readonly Color InterventionColor = new Color(0.55f, 0.6f, 0.65f);//identical for all, no icon, no text
 
     static readonly string[] Parts = { "LabConsole", "ConsoleCanvas", "ConsoleCamera", "ObservationCamera" };
 
@@ -127,12 +127,11 @@ public static class LabSetup
         ArrowButton("Left", controls.transform, uiLayer, cp, LabActions.CameraLeft, new Vector2(-170f, 230f), 90f, arrow);
         ArrowButton("Right", controls.transform, uiLayer, cp, LabActions.CameraRight, new Vector2(170f, 230f), -90f, arrow);
 
-        // intervention buttons A-D in fixed positions (A B / C D); their functions are assigned randomly at start
-        Vector2[] buttonPos = { new Vector2(-95f, -120f), new Vector2(95f, -120f), new Vector2(-95f, -310f), new Vector2(95f, -310f) };
-        for (int i = 0; i < 4; i++)
+        // intervention buttons A, B, ... in fixed positions (rows of three); their channels are assigned randomly at start
+        for (int i = 0; i < LabActions.InterventionCount; i++)
         {
-            var b = UIImage($"Button{(char)('A' + i)}", controls.transform, uiLayer, InterventionColor, Rounded());
-            Place(b.rectTransform, new Vector2(0.5f, 0.5f), buttonPos[i], new Vector2(160f, 160f));
+            var b = UIImage($"Button{LabActions.ButtonLetter(i)}", controls.transform, uiLayer, InterventionColor, Rounded());
+            Place(b.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(-40f + 170f * (i % 3), -120f - 190f * (i / 3)), new Vector2(150f, 150f));
             var pb = b.gameObject.AddComponent<PanelButton>();
             pb.action = LabActions.ButtonA + i;
             pb.panel = cp;

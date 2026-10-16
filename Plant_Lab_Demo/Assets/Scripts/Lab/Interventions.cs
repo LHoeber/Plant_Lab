@@ -1,32 +1,36 @@
 using UnityEngine;
 
 /// <summary>
-/// The four intervention functions behind buttons A-D. Each press cycles that function through its levels.
-/// Which button controls which function is hidden and permuted per participant (see ControlPanel).
-/// For now this only keeps and reports the levels; the plants don't react to them yet.
+/// The intervention channels behind the buttons, one per button. Each press cycles that channel through its levels.
+/// Which button controls which channel is hidden and permuted per participant (see ControlPanel).
+/// What the channels do (light, water, ...) is not defined yet: for now they only keep and report their levels,
+/// and the plants don't react to them.
 /// </summary>
 public class Interventions : MonoBehaviour
 {
-    public enum Function { Light, Temperature, Water, Fertiliser }
-
-    [Tooltip("Levels per function; a press moves to the next level, after the last one back to the first.")]
+    [Tooltip("Placeholder names of the channels (for logs). What each one does is not defined yet.")]
+    public string[] channelNames = { "Channel 1", "Channel 2", "Channel 3", "Channel 4", "Channel 5", "Channel 6" };
+    [Tooltip("Levels per channel; a press moves to the next level, after the last one back to the first.")]
     [Range(2, 6)] public int levels = 3;
-    [Tooltip("Starting level of every function.")]
+    [Tooltip("Starting level of every channel.")]
     public int startLevel = 1;
 
-    /// <summary>Current level per function (index = (int)Function).</summary>
+    public int Count => LabActions.InterventionCount;
+    /// <summary>Current level per channel.</summary>
     public int[] Level { get; private set; }
 
     void Awake()
     {
-        Level = new int[4];
-        for (int i = 0; i < 4; i++) Level[i] = Mathf.Clamp(startLevel, 0, levels - 1);
+        Level = new int[Count];
+        for (int i = 0; i < Count; i++) Level[i] = Mathf.Clamp(startLevel, 0, levels - 1);
     }
 
-    /// <summary>Cycles a function to its next level.</summary>
-    public void Cycle(Function f)
+    /// <summary>Cycles a channel to its next level.</summary>
+    public void Cycle(int channel)
     {
-        int i = (int)f;
-        Level[i] = (Level[i] + 1) % levels;
+        Level[channel] = (Level[channel] + 1) % levels;
     }
+
+    public string ChannelName(int channel) =>
+        channel < channelNames.Length && !string.IsNullOrEmpty(channelNames[channel]) ? channelNames[channel] : $"Channel {channel + 1}";
 }
