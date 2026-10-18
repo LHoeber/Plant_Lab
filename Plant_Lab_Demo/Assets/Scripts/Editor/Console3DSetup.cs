@@ -27,6 +27,12 @@ public static class Console3DSetup
     [MenuItem("Botanic Lab/Use 3D Console")]
     static void Use3DConsole()
     {
+        //Console3D reads the Screen mesh's normal at runtime: the model must be readable (Read/Write)
+        if (AssetImporter.GetAtPath(ModelPath) is ModelImporter importer && !importer.isReadable)
+        {
+            importer.isReadable = true;
+            importer.SaveAndReimport();
+        }
         var model = AssetDatabase.LoadAssetAtPath<GameObject>(ModelPath);
         var cp = Object.FindAnyObjectByType<ControlPanel>();
         var observation = Object.FindAnyObjectByType<ObservationCamera>();

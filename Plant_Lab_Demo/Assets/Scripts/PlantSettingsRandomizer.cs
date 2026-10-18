@@ -9,7 +9,8 @@ public class NoRandomizeAttribute : Attribute { }
 
 /// <summary>
 /// Creates a randomly varied copy of a PlantSettings asset. The original is never changed.
-/// Every float/int field with a [Range] is varied within that range, every enum field may switch value.
+/// Every float/int field with a [Range] is varied within that range, every enum field may switch value,
+/// every L-system constant within its own min and max.
 /// Same source values + same strength + same seed => same result.
 /// </summary>
 public static class PlantSettingsRandomizer
@@ -25,9 +26,11 @@ public static class PlantSettingsRandomizer
 
         //reflection: go through all public fields of PlantSettings instead of listing them by hand,
         //so new parameters are included automatically
+        //parameters the plant's development doesn't use are left alone (they'd change nothing)
+        Type unused = source.development == DevelopmentMode.LSystem ? typeof(ClassicOnlyAttribute) : typeof(LSystemOnlyAttribute);
         foreach (FieldInfo field in typeof(PlantSettings).GetFields(BindingFlags.Public | BindingFlags.Instance))
         {
-            if (field.GetCustomAttribute<NoRandomizeAttribute>() != null) continue;
+            if (field.GetCustomAttribute<NoRandomizeAttribute>() != null || Attribute.IsDefined(field, unused)) continue;
             var range = field.GetCustomAttribute<RangeAttribute>();
 
             if (field.FieldType == typeof(float) && range != null)
@@ -58,6 +61,14 @@ public static class PlantSettingsRandomizer
                 }
             }
         }
+        //L-system constants: each within its own min..max
+        if (copy.lsConstants != null && source.development == DevelopmentMode.LSystem)
+            foreach (LConstant c in copy.lsConstants)
+            {
+                float before = c.value;
+                c.value = Perturb(before, Mathf.Min(c.min, c.max), Mathf.Max(c.min, c.max), strength, rng);
+                if (!Mathf.Approximately(before, c.value)) log.AppendLine($"  L-system {c.name}: {before:0.###} -> {c.value:0.###}");
+            }
         changes = log.Length > 0 ? log.ToString() : "  (no changes)";
         return copy;
     }

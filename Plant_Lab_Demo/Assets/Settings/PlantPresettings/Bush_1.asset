@@ -1,0 +1,127 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a100951605744ab5a908f8be9ae55ef, type: 3}
+  m_Name: Bush_1
+  m_EditorClassIdentifier: Assembly-CSharp::PlantSettings
+  growingEnd: 0
+  growingDuration: 60
+  enableFlowering: 1
+  floweringEnd: 0
+  floweringDuration: 10
+  enableFruiting: 1
+  fruitingEnd: 0
+  fruitingDuration: 10
+  development: 1
+  lsAxiom: X(steps)
+  lsRules: '# bracketed plant (The Algorithmic Beauty of Plants, Fig. 1.24 f) without
+    elongation:
+
+    # X(n) has n steps left; its segments get the length they would
+    reach by doubling n-1 more times (F -> F F)
+
+    X(n) : n > 0 -> F(startLen*(1+lenFactor*(n-1)))
+    [ + / /(30) X(n-1) ] F(startLen*(1 + lenFactor*(n-1))) [ - /(60) X(n-1) ] F(startLen*(1
+    + (n-1))) X(n-1)
+
+    # the twig ends: a leaf, sometimes a flower bud
+
+    X(n)
+    : n <= 0 -> [ &(leafAngle) L ] [ /(180) &(leafAngle) L ] @ 1 - pFlower
+
+    X(n)
+    : n <= 0 -> K @ pFlower'
+  lsConstants:
+  - name: steps
+    value: 4.99
+    min: 1
+    max: 6
+  - name: angle
+    value: 15
+    min: 0
+    max: 60
+  - name: roll
+    value: 57.2
+    min: 0
+    max: 180
+  - name: pFlower
+    value: 0.2
+    min: 0
+    max: 1
+  - name: startLen
+    value: 1.79
+    min: 0
+    max: 10
+  - name: lenFactor
+    value: 0.564
+    min: 0
+    max: 1
+  - name: leafAngle
+    value: 133
+    min: 0
+    max: 180
+  lsUnit: 0.035
+  lsAngle: 25
+  leafSymbols: L
+  flowerSymbols: K
+  growthSpeed: 0.125
+  maxLength: 2.14
+  directionBias: 0
+  perturbationStd: 0.15
+  maxRadius: 0.0548
+  radiusDepthFactor: 0.65
+  radiusFalloff: 1
+  endTaperLength: 0.3
+  radialGrowthTime: 8
+  spawnStartFraction: 0.18
+  spawnCheckInterval: 0.04
+  spawnProbability: 0.8
+  leafProbabilityAtEnd: 0.4
+  phyllotaxisNoiseDeg: 10
+  branchProbability: 0.2
+  branchStartFraction: 0.2
+  maxDepth: 6
+  branchElevationDeg: 56.8
+  sideBranchLengthRatio: 0.5
+  lengthFalloff: 0.8
+  leafPrefabs:
+  - {fileID: 6210749114086206293, guid: 675e43d6d7aeb4be0a2371a5dddaa6f8, type: 3}
+  leafGrowthDuration: 5
+  maxLeafSize: 0.1
+  leafSizeFalloff: 0.423
+  leafSizeNoise: 0.303
+  leafElevationDeg: -20
+  flowerPrefabs:
+  - {fileID: 4799451868281231511, guid: f991fc312701640c8a3e5cec039ce8f4, type: 3}
+  flowerProbability: 0.3
+  flowerDelay: 5
+  budGrowDuration: 3
+  flowerOpenDuration: 8
+  maxFlowerSize: 0.5
+  flowerSizeNoise: 0.1
+  fruitSetProbability: 0.25
+  fruitDevelopDuration: 6
+  maxBranches: 300
+  maxLeaves: 1500
+  maxFlowers: 200
+  obstacleClearance: 0.005
+  leafMaxTiltDeg: 45
+  flowerMaxTiltDeg: 30
+  bendMoveSpeed: 0.025
+  bendFlexibleRadius: 0.005
+  bendSettleTime: 15
+  witherWaveDuration: 30
+  witherJitter: 2
+  organWitherTime: 6
+  stemWitherTime: 20
+  stemWitheredRadiusFraction: 0.7
+  witheredColor: {r: 0.42, g: 0.35, b: 0.2, a: 1}
+  witherColorAmount: 0.85

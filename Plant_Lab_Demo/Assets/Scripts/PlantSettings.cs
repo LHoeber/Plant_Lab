@@ -1,5 +1,18 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
+
+/// <summary>How a phase ends: on its own (duration, or for Growing also when all tips are finished), or only when triggered.</summary>
+public enum PhaseEnd { Automatic, OnTrigger }
+
+/// <summary>What decides where branches, leaves and flowers appear.</summary>
+public enum DevelopmentMode
+{
+    /// <summary>The original spawn logic (spawn checks along the branches, probabilities, length limits).</summary>
+    Classic,
+    /// <summary>L-system rules (see the L-system section).</summary>
+    LSystem,
+}
 
 /// <summary>
 /// All parameters that define how a plant grows, stored as an asset file (ScriptableObject).
@@ -41,18 +54,69 @@ public class PlantSettings : ScriptableObject
     public const float MinLeafSizeFraction = 0.3f;
 
     [Header("Phases (fixed order: Growing -> Flowering -> Fruiting -> Withering)")]
-    [Tooltip("Sim seconds of growing at most: Growing ends when all branches have finished, or after this time " +
+    [Tooltip("Automatic: Growing ends when all branches have finished, or after growingDuration. " +
+             "On Trigger: it ends only when triggered (PlantGrowth.TriggerNextPhase, e.g. from an intervention, " +
+             "or the 'Skip To Next Phase' box), however long that takes.")]
+    [NoRandomize] public PhaseEnd growingEnd = PhaseEnd.Automatic;
+    [Tooltip("Sim seconds of growing at most (Automatic): Growing ends when all branches have finished, or after this time " +
              "(unfinished branches then stop where they are and get no bud).")]
     [FormerlySerializedAs("growingMaxDuration")]//keeps the value of presets saved under the old name
     [NoRandomize][Range(1f, 600f)] public float growingDuration = 20f;
     [Tooltip("Flowering phase: the buds that exist open. Off = skipped, buds wither unopened.")]
     public bool enableFlowering = true;
-    [Tooltip("Sim seconds the Flowering phase lasts.")]
+    [Tooltip("Automatic: Flowering ends after floweringDuration. On Trigger: only when triggered.")]
+    [NoRandomize] public PhaseEnd floweringEnd = PhaseEnd.Automatic;
+    [Tooltip("Sim seconds the Flowering phase lasts (Automatic).")]
     [NoRandomize][Range(1f, 60f)] public float floweringDuration = 10f;
     [Tooltip("Fruiting phase: open flowers develop into fruit (with fruitSetProbability), the others wither and fall. Off = skipped.")]
     public bool enableFruiting = true;
-    [Tooltip("Sim seconds the Fruiting phase lasts.")]
+    [Tooltip("Automatic: Fruiting ends after fruitingDuration. On Trigger: only when triggered.")]
+    [NoRandomize] public PhaseEnd fruitingEnd = PhaseEnd.Automatic;
+    [Tooltip("Sim seconds the Fruiting phase lasts (Automatic).")]
     [NoRandomize][Range(1f, 60f)] public float fruitingDuration = 10f;
+
+    [Header("Development")]
+    [Tooltip("Classic: the original spawn settings (Spawn nodes, Branching, flowerProbability, ...). " +
+             "LSystem: the rules in the L-system section decide where branches, leaves and flowers appear; " +
+             "growth, thickness, light, collisions, organ sizes and withering still use the settings below.")]
+    [NoRandomize] public DevelopmentMode development = DevelopmentMode.Classic;
+
+    [Header("L-system (only used with development = LSystem)")]
+    [Tooltip("Start of the derivation, e.g. A(0, 0).")]
+    [LSystemOnly][TextArea(1, 3)] public string lsAxiom = "A(0, 0)";
+    [Tooltip("One rule per line:  predecessor(params) : condition -> successor @ weight   ('#' starts a comment). " +
+             "Growth happens at the tips: a module is replaced when the growing tip reaches it. " +
+             "F(len) grows the branch, + - & ^ \\ / | turn, [ ] starts a branch, leaf and flower symbols place organs " +
+             "(a parameter scales them, e.g. L(0.5)). A tip whose module has no applicable rule is finished.")]
+    [LSystemOnly][TextArea(6, 30)] public string lsRules =
+        "# tip A(s, o): has grown s units on an axis of branching order o (0 = main stem)\n" +
+        "A(s, o) : s < maxLen * ratio**o and o < maxOrder -> F(dl) /(137.5) [ &(branchAngle) A(0, o+1) ] A(s+dl, o) @ pBranch\n" +
+        "A(s, o) : s < maxLen * ratio**o -> F(dl) /(137.5) [ &(leafAngle) L ] A(s+dl, o) @ pLeaf\n" +
+        "A(s, o) : s < maxLen * ratio**o -> F(dl) A(s+dl, o) @ max(0, 1 - pBranch - pLeaf)\n" +
+        "# at its length limit the tip ends: with a flower bud, or without\n" +
+        "A(s, o) : s >= maxLen * ratio**o -> K @ pFlower\n" +
+        "A(s, o) : s >= maxLen * ratio**o -> @ 1 - pFlower";
+    [Tooltip("Names usable in the rules. Each has a slider between its min and max; Randomize varies the values within them.")]
+    [LSystemOnly]public List<LConstant> lsConstants = new List<LConstant>
+    {
+        new LConstant { name = "maxLen", value = 15f, min = 1f, max = 40f },
+        new LConstant { name = "ratio", value = 0.5f, min = 0.1f, max = 1f },
+        new LConstant { name = "maxOrder", value = 3f, min = 0f, max = 6f },
+        new LConstant { name = "dl", value = 0.4f, min = 0.1f, max = 2f },
+        new LConstant { name = "pBranch", value = 0.15f, min = 0f, max = 1f },
+        new LConstant { name = "pLeaf", value = 0.6f, min = 0f, max = 1f },
+        new LConstant { name = "pFlower", value = 0.3f, min = 0f, max = 1f },
+        new LConstant { name = "branchAngle", value = 40f, min = 0f, max = 90f },
+        new LConstant { name = "leafAngle", value = 60f, min = 0f, max = 90f },
+    };
+    [Tooltip("Meters per turtle unit: F(1) grows this long.")]
+    [LSystemOnly][Length][NoRandomize][Range(0.005f, 0.5f)] public float lsUnit = 0.1f;
+    [Tooltip("Angle of + - & ^ \\ / without a parameter (degrees).")]
+    [LSystemOnly][NoRandomize][Range(0f, 180f)] public float lsAngle = 25f;
+    [Tooltip("Symbols that place a leaf (one or more characters, e.g. \"L\").")]
+    [LSystemOnly]public string leafSymbols = "L";
+    [Tooltip("Symbols that place a flower bud (one or more characters, e.g. \"K\").")]
+    [LSystemOnly]public string flowerSymbols = "K";
 
     [Header("Growth")]
     [Tooltip("How fast branch tips grow, units per sim second (all branches). Changes the plant's proportions: " +
@@ -60,7 +124,9 @@ public class PlantSettings : ScriptableObject
              "Final main stem height is roughly growthSpeed x growingDuration (at most maxLength). " +
              "To just watch faster, use simSpeed on the Plant Growth component instead.")]
     [Length][NoRandomize][Range(0.005f, 0.5f)] public float growthSpeed = 0.125f;
-    [Tooltip("Maximum length of the main stem (along the stem, so a winding stem can be longer than the terrarium is high).")]
+    [Tooltip("Maximum length of the main stem (along the stem, so a winding stem can be longer than the terrarium is high). " +
+             "Also the reference length of the falloffs (thickness, leaf size). L-system: only that reference; " +
+             "set it to about the length the main axis reaches.")]
     [Length][Range(0.05f, 5f)] public float maxLength = 2f;
 
     [Header("Direction")]
@@ -89,35 +155,35 @@ public class PlantSettings : ScriptableObject
 
     [Header("Spawn nodes (leaf or branch)")]
     [Tooltip("Bare section at the start of every branch: the first leaf/branch can appear after this fraction of the branch's maximum length.")]
-    [Range(0f, 0.5f)] public float spawnStartFraction = 0.1f;
+    [ClassicOnly][Range(0f, 0.5f)] public float spawnStartFraction = 0.1f;
     [Tooltip("Distance along a branch between two possible leaf/branch positions. Smaller = denser plant " +
              "(and many more organs: the main driver of how many leaves a plant gets).")]
-    [Length][Range(0.01f, 0.1f)] public float spawnCheckInterval = 0.04f;
+    [ClassicOnly][Length][Range(0.01f, 0.1f)] public float spawnCheckInterval = 0.04f;
     [Tooltip("Probability that something (leaf or branch) appears at each possible position.")]
-    [Range(0f, 1f)] public float spawnProbability = 0.8f;
+    [ClassicOnly][Range(0f, 1f)] public float spawnProbability = 0.8f;
     [Tooltip("Leaf probability at a branch's end: toward the end it rises from spawnProbability to this value " +
              "(the extra spawns are always leaves). Values below spawnProbability have no effect.")]
-    [Range(0f, 1f)] public float leafProbabilityAtEnd = 0.4f;
+    [ClassicOnly][Range(0f, 1f)] public float leafProbabilityAtEnd = 0.4f;
     [Tooltip("Irregularity of the leaf spiral: std (degrees) of the noise added to the golden angle between successive leaves/branches.")]
-    [Range(0f, 45f)] public float phyllotaxisNoiseDeg = 10f;
+    [ClassicOnly][Range(0f, 45f)] public float phyllotaxisNoiseDeg = 10f;
 
     [Header("Branching")]
     [Tooltip("If something appears: probability that it's a branch rather than a leaf.")]
-    [Range(0f, 1f)] public float branchProbability = 0.2f;
+    [ClassicOnly][Range(0f, 1f)] public float branchProbability = 0.2f;
     [Tooltip("No side branches below this fraction of a branch's maximum length (a leaf appears instead).")]
-    [Range(0f, 0.5f)] public float branchStartFraction = 0.2f;
+    [ClassicOnly][Range(0f, 0.5f)] public float branchStartFraction = 0.2f;
     [Tooltip("Maximum branching level (0 = main stem only, 1 = side branches, 2 = their side branches, ...). " +
              "The number of branches multiplies with every level: keep it low with dense spawning.")]
-    [Range(0, 6)] public int maxDepth = 3;
+    [ClassicOnly][Range(0, 6)] public int maxDepth = 3;
     [Tooltip("Angle of a new branch toward its parent's growth direction (0 = straight out, 90 = along the parent).")]
-    [Range(0f, 90f)] public float branchElevationDeg = 33f;
+    [ClassicOnly][Range(0f, 90f)] public float branchElevationDeg = 33f;
     [Tooltip("Length of a side branch growing right at the plant base, as a fraction of the main stem's maxLength. " +
              "Side branches higher up are shorter (see lengthFalloff).")]
-    [Range(0.1f, 1.5f)] public float sideBranchLengthRatio = 0.5f;
+    [ClassicOnly][Range(0.1f, 1.5f)] public float sideBranchLengthRatio = 0.5f;
     [Tooltip("How much shorter side branches get toward the top, relative to the main stem's length: " +
              "0 = all equally long (column), 0.6 = the topmost still about 60% of the lowest (rounded crown), " +
              "1 = zero length right at the top (pointed crown). Same crown shape whatever maxLength is.")]
-    [Range(0f, 1.5f)] public float lengthFalloff = 0.8f;
+    [ClassicOnly][Range(0f, 1.5f)] public float lengthFalloff = 0.8f;
 
     [Header("Leaves")]
     [Tooltip("Leaf variants; each new leaf picks one at random (equal chance). Each prefab's origin must be the " +
@@ -134,16 +200,16 @@ public class PlantSettings : ScriptableObject
     [Range(0f, 0.5f)] public float leafSizeNoise = 0.2f;
     [Tooltip("Angle of the blade relative to the plane perpendicular to the branch (0 = sticking straight out, " +
              "90 = pointing along the branch, negative = hanging down).")]
-    [Range(-90f, 90f)] public float leafElevationDeg = -20f;
+    [ClassicOnly][Range(-90f, 90f)] public float leafElevationDeg = -20f;
 
     [Header("Flowers")]
     [Tooltip("Flower variants; each flower picks one at random. Each prefab's origin must be the flower's base, " +
              "with the flower facing along local +Y. A FlowerMorph on the prefab root does the opening.")]
     public GameObject[] flowerPrefabs;
     [Tooltip("Probability that a branch tip gets a flower once that branch has finished growing (main stem included).")]
-    [Range(0f, 1f)] public float flowerProbability = 0.3f;
+    [ClassicOnly][Range(0f, 1f)] public float flowerProbability = 0.3f;
     [Tooltip("Sim seconds between a branch finishing and its bud appearing.")]
-    [Range(0f, 30f)] public float flowerDelay = 5f;
+    [ClassicOnly][Range(0f, 30f)] public float flowerDelay = 5f;
     [Tooltip("Sim seconds for a new bud to grow from nothing to its closed bud size. It stays closed until the Flowering phase.")]
     [Range(0.5f, 10f)] public float budGrowDuration = 3f;
     [Tooltip("Sim seconds from closed bud to fully open, counted from the start of the Flowering phase " +

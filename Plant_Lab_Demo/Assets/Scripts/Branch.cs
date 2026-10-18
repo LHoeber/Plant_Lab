@@ -67,7 +67,9 @@ public class Branch
     public bool blocked;            // the tip ran into obstacles with no free direction left: counts as finished
     readonly List<Vector3> contacts = new List<Vector3>(); // obstacle normals touched by the tip in the current step
     public bool flowerDecided;      // the flower check at the finished tip has been made (once per branch)
-    public Flower flower;           // flower at the tip, or null
+    public Flower flower;           // flower at the tip, or null (classic)
+    public int flowerCount;         // flowers placed on this branch so far
+    public TipProgram program;      // L-system: what this tip still has to do (null in classic development)
     public float phyllotaxisAngle;  // angle around the branch (degrees) of the most recent leaf/branch
 
     public float TotalLength => committedLength + tipSegLen;

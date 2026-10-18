@@ -3,13 +3,16 @@ using UnityEngine;
 /// <summary>
 /// Everything the simulation knows about one flower. Plain data, no GameObject:
 /// the visual (a prefab with FlowerMorph) is created and updated separately by PlantVisuals.
-/// A flower sits at the end of a finished branch and points in that branch's last direction.
+/// Classic: a flower sits at the end of a finished branch and points in that branch's last direction.
+/// L-system: wherever a flower symbol is placed, pointing in the turtle's direction there.
 /// </summary>
 public class Flower
 {
     public Branch branch;       //branch whose end the flower sits on
     public int seg;             //last segment of that branch at the time the flower spawned
     public float offset;        //offset in that segment = its full length (the end point)
+    public float arcPos;        //distance from the branch base (the branch's end for classic flowers)
+    public int indexOnBranch;   //0 for the first flower on its branch, 1 for the next, ... (separate random streams)
     public float birthTime;     //sim time the bud appeared (it stays closed until the Flowering phase)
     public float sizeFactor;    //random per-flower size multiplier
     public Vector3 dir;         //direction the flower faces as grown: the branch's last direction (rest shape)

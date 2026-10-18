@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -39,13 +40,21 @@ public class PlantSimulation
     /// </summary>
     public OrganCompound[] LeafShapes, FlowerShapes;
 
+    /// <summary>What decides where branches, leaves and flowers appear (classic spawn logic or L-system rules).</summary>
+    public readonly IPlantDevelopment Development;
+
+    /// <summary>Called whenever a new phase starts (e.g. for logging).</summary>
+    public event Action<PlantPhase> PhaseChanged;
+
     public PlantSimulation(PlantSettings settings, int seed)
     {
         Settings = settings;
         //main stem: starts at the origin, growing up; any vector perpendicular to up works as reference axis
         Root = new Branch(seed, 0, null, 0, 0f, 0f, Vector3.zero, Vector3.up, Vector3.forward, 0f);
-        Root.nextSpawnCheck = Settings.spawnStartFraction * MaxLengthOf(Root);
         Branches.Add(Root);
+        Development = settings.development == DevelopmentMode.LSystem
+            ? new LSystemDevelopment(settings) : (IPlantDevelopment)new ClassicDevelopment();
+        Development.Begin(this);
     }
 
     // --- growth formulas ---
@@ -75,33 +84,23 @@ public class PlantSimulation
         return b.parent == null ? r : Mathf.Min(r, TargetRadius(b.parent, b.attachArc));
     }
 
-    /// <summary>Maximum length of a branch (from the current settings, so sliders act immediately).</summary>
-    public float MaxLengthOf(Branch b) => b.depth == 0 ? Settings.maxLength : Settings.SideBranchLength(BaseDistance(b));
+    /// <summary>
+    /// Length a branch grows to (classic: from the current settings, so sliders act immediately;
+    /// L-system: not known in advance, its current length).
+    /// </summary>
+    public float MaxLengthOf(Branch b) => Development.MaxLengthOf(this, b);
 
     /// <summary>One fixed simulation step. Returns true, because thickening and bending change the shape every step.</summary>
     public bool Step(float dt)
     {
         SimTime += dt;//leaves keep aging and stems keep thickening even after all tips stopped
-        if (Phase == PlantPhase.Growing)
-        {
-            //new tissue is only formed in the Growing phase
-            float dL = Settings.growthSpeed * dt;
-            //only branches that existed at the start of the step grow in it;
-            //branches spawned during this step start growing in the next one
-            int n = Branches.Count;
-            for (int i = 0; i < n; i++)
-                Branches[i].Grow(dL, MaxLengthOf(Branches[i]), this);
-        }
+        //new tissue is only formed in the Growing phase
+        if (Phase == PlantPhase.Growing) Development.Grow(this, Settings.growthSpeed * dt);
         //positions and radii for the new sim time; creation order = parents before children
         foreach (Branch b in Branches) b.UpdateGeometry(this);
         //anything that now touches an obstacle turns/bends away, before this state is ever drawn
         ResolveContacts(dt);
-        //finished tips whose bud delay has passed get their (one) flower check;
-        //no new buds after Flowering (they'd have no chance to open and set fruit)
-        if (Phase <= PlantPhase.Flowering)
-            foreach (Branch b in Branches)
-                if (b.finishTime >= 0f && !b.flowerDecided && SimTime - b.finishTime >= Settings.flowerDelay)
-                    FlowerCheck(b);
+        Development.AfterStep(this);
         UpdatePhase();
         return true;
     }
@@ -115,16 +114,18 @@ public class PlantSimulation
         float inPhase = SimTime - PhaseStartTime;
         switch (Phase)
         {
+            //phases set to OnTrigger only end through EnterNextPhase / AdvanceTo (called from outside)
             case PlantPhase.Growing:
+                if (s.growingEnd != PhaseEnd.Automatic) break;
                 bool allFinished = true;
                 foreach (Branch b in Branches) if (b.finishTime < 0f && !b.stopped) { allFinished = false; break; }
                 if (allFinished || inPhase >= s.growingDuration) EnterNextPhase();
                 break;
             case PlantPhase.Flowering:
-                if (inPhase >= s.floweringDuration) EnterNextPhase();
+                if (s.floweringEnd == PhaseEnd.Automatic && inPhase >= s.floweringDuration) EnterNextPhase();
                 break;
             case PlantPhase.Fruiting:
-                if (inPhase >= s.fruitingDuration) EnterNextPhase();
+                if (s.fruitingEnd == PhaseEnd.Automatic && inPhase >= s.fruitingDuration) EnterNextPhase();
                 break;
             case PlantPhase.Withering:
                 //over once the wave has reached the base and the last organs/stems there have withered
@@ -134,7 +135,16 @@ public class PlantSimulation
         }
     }
 
-    /// <summary>Ends the current phase and starts the next enabled one (also usable from outside to skip ahead, e.g. for testing).</summary>
+    /// <summary>Moves on through the phases until the given one (or a later one) is reached. Skipped phases still start and end.</summary>
+    public void AdvanceTo(PlantPhase target)
+    {
+        while (Phase < target && Phase < PlantPhase.Dead) EnterNextPhase();
+    }
+
+    /// <summary>
+    /// Ends the current phase and starts the next enabled one: the trigger for phases set to OnTrigger,
+    /// and usable from outside to skip ahead (e.g. for testing).
+    /// </summary>
     public void EnterNextPhase()
     {
         PlantPhase next = Phase;
@@ -155,6 +165,7 @@ public class PlantSimulation
         if (next == PlantPhase.Flowering) FloweringStartTime = SimTime;
         if (next == PlantPhase.Fruiting) StartFruiting();
         if (next == PlantPhase.Withering) StartWithering();
+        PhaseChanged?.Invoke(next);
     }
 
     /// <summary>Decides for every flower whether it develops into a fruit; the others start withering now.</summary>
@@ -166,7 +177,7 @@ public class PlantSimulation
         {
             //own stream per flower (from its branch's seed): fruit set never shifts any other random decision.
             //always the same draws, whatever the outcome
-            var r = new System.Random(unchecked(f.branch.seed * 486187739 + 4));
+            var r = new System.Random(unchecked(f.branch.seed * 486187739 + 4 + 7919 * f.indexOnBranch));
             double uFruit = r.NextDouble();
             float jitter = Mathf.Abs(Gaussian(r)) * Settings.witherJitter;
             f.setsFruit = opened && uFruit < Settings.fruitSetProbability;
@@ -189,7 +200,7 @@ public class PlantSimulation
                 WaveArrival(DistanceFromBase(leaf.branch, leaf.arcPos)) + Mathf.Abs(Gaussian(r)) * s.witherJitter);
         foreach (Flower f in Flowers)
             f.witherStart = Mathf.Min(f.witherStart,
-                WaveArrival(DistanceFromBase(f.branch, f.branch.committedLength)) + Mathf.Abs(Gaussian(r)) * s.witherJitter);
+                WaveArrival(DistanceFromBase(f.branch, f.arcPos)) + Mathf.Abs(Gaussian(r)) * s.witherJitter);
     }
 
     /// <summary>Sim time the withering wave reaches a point at the given distance from the base.</summary>
@@ -210,8 +221,8 @@ public class PlantSimulation
     /// <summary>How withered a flower is: 0 = fresh, 1 = fully withered. At 1 it falls off.</summary>
     public float FlowerWither(Flower f) => Mathf.Clamp01((SimTime - f.witherStart) / Settings.organWitherTime);
 
-    /// <summary>Decides once whether a finished branch gets a flower at its tip, and creates it.</summary>
-    void FlowerCheck(Branch b)
+    /// <summary>Classic: decides once whether a finished branch gets a flower at its tip, and creates it.</summary>
+    public void FlowerCheck(Branch b)
     {
         b.flowerDecided = true;
         if (b.SegmentCount == 0) return;//nothing to sit on (branch with practically no length)
@@ -231,6 +242,8 @@ public class PlantSimulation
             branch = b,
             seg = last,
             offset = b.segLength[last],//end of the last segment = the branch's end point
+            arcPos = b.committedLength,
+            indexOnBranch = b.flowerCount++,
             birthTime = SimTime,
             sizeFactor = Mathf.Max(0.1f, 1f + sizeNoise * Settings.flowerSizeNoise),
             rollDeg = (float)(uRoll * 360.0),
@@ -330,7 +343,8 @@ public class PlantSimulation
 
     /// <summary>Current orientation of a leaf: as grown, tilted at its base, then carried by its branch's bend.</summary>
     public Quaternion LeafRotationNow(Leaf leaf) =>
-        Quaternion.Normalize(leaf.branch.RotAt(leaf.seg) * leaf.tilt * LeafRotation(leaf.tangent, leaf.outward));
+        Quaternion.Normalize(leaf.branch.RotAt(leaf.seg) * leaf.tilt *
+                             (leaf.hasFrame ? leaf.frame : LeafRotation(leaf.tangent, leaf.outward)));
 
     /// <summary>Current direction from the branch's center line toward the leaf's base.</summary>
     public Vector3 LeafOutwardNow(Leaf leaf) => leaf.branch.RotAt(leaf.seg) * leaf.outward;
@@ -696,6 +710,104 @@ public class PlantSimulation
         double u1 = 1.0 - r.NextDouble(); // (0,1] to avoid log(0)
         double u2 = r.NextDouble();
         return (float)(System.Math.Sqrt(-2.0 * System.Math.Log(u1)) * System.Math.Cos(2.0 * System.Math.PI * u2));
+    }
+
+    // --- creating branches and organs at a branch's tip (L-system development) ---
+
+    /// <summary>
+    /// A new branch starting at the parent's current tip, growing in direction dir (rest shape of the parent),
+    /// with normal as its reference axis (perpendicular to dir). Null if the branch limit is reached.
+    /// </summary>
+    public Branch AddBranchAtTip(Branch parent, Vector3 dir, Vector3 normal)
+    {
+        if (Branches.Count >= Settings.maxBranches) { LimitReached("branches", "maxBranches", Settings.maxBranches); return null; }//safety limit
+        int seg = parent.SegmentCount;
+        float offset = parent.tipSegLen;
+        var child = new Branch(DeriveSeed(parent.seed, parent.children.Count), parent.depth + 1, parent, seg, offset,
+                               parent.TotalLength, parent.PointAt(seg, offset), dir.normalized, normal.normalized, SimTime);
+        child.nextSpawnCheck = float.PositiveInfinity;//no classic spawn checks
+        parent.children.Add(child);
+        Branches.Add(child);
+        return child;
+    }
+
+    /// <summary>
+    /// A leaf at a branch's current tip, oriented by the turtle (rest shape): blade along `heading`, upper surface toward `up`.
+    /// sizeFactor multiplies its random size factor. Null if the leaf limit is reached.
+    /// </summary>
+    public Leaf AddLeafAtTip(Branch branch, Vector3 heading, Vector3 up, float sizeFactor)
+    {
+        if (Leaves.Count >= Settings.maxLeaves) { LimitReached("leaves", "maxLeaves", Settings.maxLeaves); return null; }//safety limit
+        System.Random r = branch.spawnRng;
+        double uVariant = r.NextDouble();
+        float sizeNoise = Gaussian(r);
+        Vector3 tangent = branch.tipDir;
+        Vector3 outward = Vector3.ProjectOnPlane(heading, tangent);
+        if (outward.sqrMagnitude < 1e-4f) outward = Vector3.ProjectOnPlane(up, tangent);//along the branch: use the turtle's up side
+        if (outward.sqrMagnitude < 1e-8f) outward = branch.tipNormal;
+        outward.Normalize();
+        int count = Settings.leafPrefabs != null ? Settings.leafPrefabs.Length : 0;
+        var leaf = new Leaf
+        {
+            branch = branch,
+            seg = branch.SegmentCount,
+            offset = branch.tipSegLen,
+            arcPos = branch.TotalLength,
+            tangent = tangent,
+            outward = outward,
+            birthTime = SimTime,
+            sizeFactor = Mathf.Max(0.1f, 1f + sizeNoise * Settings.leafSizeNoise) * Mathf.Max(0f, sizeFactor),
+            variant = count > 0 ? Mathf.Min((int)(uVariant * count), count - 1) : -1,
+            hasFrame = true,
+            frame = Quaternion.LookRotation(heading, up),
+        };
+        branch.leaves.Add(leaf);
+        Leaves.Add(leaf);
+        return leaf;
+    }
+
+    /// <summary>A flower bud at a branch's current tip, facing `heading` (rest shape). Null if the flower limit is reached.</summary>
+    public Flower AddFlowerAtTip(Branch branch, Vector3 heading, float sizeFactor)
+    {
+        if (Flowers.Count >= Settings.maxFlowers) { LimitReached("flowers", "maxFlowers", Settings.maxFlowers); return null; }//safety limit
+        System.Random r = branch.spawnRng;
+        double uRoll = r.NextDouble();
+        double uVariant = r.NextDouble();
+        float sizeNoise = Gaussian(r);
+        //right at the end of a committed segment (e.g. after an F): attach there, like a classic flower
+        bool atNode = branch.tipSegLen < 1e-5f && branch.SegmentCount > 0;
+        int seg = atNode ? branch.SegmentCount - 1 : branch.SegmentCount;
+        int count = Settings.flowerPrefabs != null ? Settings.flowerPrefabs.Length : 0;
+        var flower = new Flower
+        {
+            branch = branch,
+            seg = seg,
+            offset = atNode ? branch.segLength[seg] : branch.tipSegLen,
+            arcPos = branch.TotalLength,
+            indexOnBranch = branch.flowerCount++,
+            birthTime = SimTime,
+            sizeFactor = Mathf.Max(0.1f, 1f + sizeNoise * Settings.flowerSizeNoise) * Mathf.Max(0f, sizeFactor),
+            rollDeg = (float)(uRoll * 360.0),
+            variant = count > 0 ? Mathf.Min((int)(uVariant * count), count - 1) : -1,
+            dir = heading.normalized,
+        };
+        if (branch.flower == null) branch.flower = flower;
+        Flowers.Add(flower);
+        return flower;
+    }
+
+    readonly HashSet<string> limitsReported = new HashSet<string>();
+
+    /// <summary>
+    /// Says once per plant that a safety limit was reached: everything of that kind the rules still produce is left
+    /// out (with brackets, including what grows inside them), so the plant can look quite different from the preview.
+    /// </summary>
+    void LimitReached(string what, string setting, int limit)
+    {
+        if (!limitsReported.Add(what)) return;
+        Debug.LogWarning($"Plant ({Settings.name}): {limit} {what} reached ({setting}). The rules produce more: " +
+                         $"further {what} are left out from here on. Raise {setting} or make the rules produce fewer " +
+                         "(e.g. fewer steps).", Settings);
     }
 
     /// <summary>Seed for the n-th child of a branch: deterministic, but different for every child.</summary>

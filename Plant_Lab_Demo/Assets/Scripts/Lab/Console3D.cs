@@ -47,6 +47,7 @@ public class Console3D : MonoBehaviour
     Renderer casing, screen;
     Material screenInstance;
     Texture2D overlay;
+    bool warnedUnreadable;
 
     void Awake()
     {
@@ -123,8 +124,18 @@ public class Console3D : MonoBehaviour
     {
         Vector3 n = -transform.forward;
         var mf = screen != null ? screen.GetComponent<MeshFilter>() : null;
-        if (mf != null && mf.sharedMesh != null && mf.sharedMesh.normals.Length > 0)
-            n = screen.transform.TransformDirection(mf.sharedMesh.normals[0]).normalized;
+        if (mf != null && mf.sharedMesh != null)
+        {
+            //in Play mode a mesh can only be read if its model has Read/Write enabled (Use 3D Console sets that)
+            if (mf.sharedMesh.isReadable && mf.sharedMesh.normals.Length > 0)
+                n = screen.transform.TransformDirection(mf.sharedMesh.normals[0]).normalized;
+            else if (!warnedUnreadable)
+            {
+                warnedUnreadable = true;
+                Debug.LogWarning("Console3D: can't read the Screen mesh's normal. Enable Read/Write in the console model's " +
+                                 "import settings (Model tab), or run Botanic Lab > Use 3D Console again.", this);
+            }
+        }
         return flipFront ? -n : n;
     }
 

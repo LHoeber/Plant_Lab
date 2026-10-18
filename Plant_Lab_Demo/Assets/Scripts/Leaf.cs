@@ -21,5 +21,7 @@ public class Leaf
     public bool movedThisStep;  //contact solving: tilted in this step (check it again in the next pass)
     public float tiltUsed;      //degrees it has already tilted in the current step (speed limit)
     public int variant;         //index into PlantSettings.leafPrefabs (-1 if there are none)
+    public bool hasFrame;       //L-system: oriented by the turtle (frame) instead of tangent/outward/elevation
+    public Quaternion frame;    //L-system: blade (+Z) along the turtle's heading, upper surface (+Y) toward its up (rest shape)
     public float witherStart = float.PositiveInfinity; //sim time withering reaches this leaf (set when the Withering phase starts)
 }

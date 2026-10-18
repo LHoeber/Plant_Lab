@@ -13,7 +13,7 @@ public class PlantSettingsEditor : Editor
 
     public override void OnInspectorGUI()
     {
-        DrawDefaultInspector();
+        DrawParameters();
 
         EditorGUILayout.Space(12);
         EditorGUILayout.LabelField("Rescale plant size", EditorStyles.boldLabel);
@@ -32,6 +32,33 @@ public class PlantSettingsEditor : Editor
             if (GUILayout.Button("x 0.5")) Rescale(0.5f);
             if (GUILayout.Button("x 2")) Rescale(2f);
         }
+    }
+
+    /// <summary>
+    /// All parameters, except the ones the current development doesn't use (see ClassicOnly / LSystemOnly):
+    /// with L-system rules, the classic spawn and branching settings are hidden, and the other way round.
+    /// </summary>
+    void DrawParameters()
+    {
+        var settings = (PlantSettings)target;
+        bool lsystem = settings.development == DevelopmentMode.LSystem;
+        System.Type hideIf = lsystem ? typeof(ClassicOnlyAttribute) : typeof(LSystemOnlyAttribute);
+        int hidden = 0;
+        serializedObject.Update();
+        SerializedProperty prop = serializedObject.GetIterator();
+        for (bool enter = true; prop.NextVisible(enter); enter = false)
+        {
+            if (prop.name == "m_Script") continue;
+            var field = typeof(PlantSettings).GetField(prop.name);
+            if (field != null && System.Attribute.IsDefined(field, hideIf)) { hidden++; continue; }
+            EditorGUILayout.PropertyField(prop, true);
+        }
+        serializedObject.ApplyModifiedProperties();
+        if (hidden > 0)
+            EditorGUILayout.HelpBox(lsystem
+                ? $"{hidden} classic settings are hidden (spawn nodes, branching, leaf elevation, flower probability and delay): " +
+                  "the L-system rules decide these."
+                : $"{hidden} L-system settings are hidden (development = Classic).", MessageType.None);
     }
 
     void Rescale(float f)

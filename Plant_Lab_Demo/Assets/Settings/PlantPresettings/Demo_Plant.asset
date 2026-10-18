@@ -12,11 +12,77 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6a100951605744ab5a908f8be9ae55ef, type: 3}
   m_Name: Demo_Plant
   m_EditorClassIdentifier: Assembly-CSharp::PlantSettings
+  growingEnd: 0
   growingDuration: 20
   enableFlowering: 1
+  floweringEnd: 0
   floweringDuration: 10
   enableFruiting: 1
+  fruitingEnd: 0
   fruitingDuration: 10
+  development: 0
+  lsAxiom: A(0, 0)
+  lsRules: '# tip A(s, o): has grown s units on an axis of branching order o (0 =
+    main stem)
+
+    A(s, o) : s < maxLen * ratio**o and o < maxOrder -> F(dl) /(137.5)
+    [ &(branchAngle) A(0, o+1) ] A(s+dl, o) @ pBranch
+
+    A(s, o) : s < maxLen *
+    ratio**o -> F(dl) /(137.5) [ &(leafAngle) L ] A(s+dl, o) @ pLeaf
+
+    A(s, o)
+    : s < maxLen * ratio**o -> F(dl) A(s+dl, o) @ max(0, 1 - pBranch - pLeaf)
+
+    #
+    at its length limit the tip ends: with a flower bud, or without
+
+    A(s, o)
+    : s >= maxLen * ratio**o -> K @ pFlower
+
+    A(s, o) : s >= maxLen * ratio**o
+    -> @ 1 - pFlower'
+  lsConstants:
+  - name: maxLen
+    value: 15
+    min: 1
+    max: 40
+  - name: ratio
+    value: 0.5
+    min: 0.1
+    max: 1
+  - name: maxOrder
+    value: 3
+    min: 0
+    max: 6
+  - name: dl
+    value: 0.4
+    min: 0.1
+    max: 2
+  - name: pBranch
+    value: 0.15
+    min: 0
+    max: 1
+  - name: pLeaf
+    value: 0.6
+    min: 0
+    max: 1
+  - name: pFlower
+    value: 0.3
+    min: 0
+    max: 1
+  - name: branchAngle
+    value: 40
+    min: 0
+    max: 90
+  - name: leafAngle
+    value: 60
+    min: 0
+    max: 90
+  lsUnit: 0.1
+  lsAngle: 25
+  leafSymbols: L
+  flowerSymbols: K
   growthSpeed: 0.125
   maxLength: 2
   directionBias: 2

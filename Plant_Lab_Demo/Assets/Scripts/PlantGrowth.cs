@@ -27,7 +27,8 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
     [Header("Phases")]
     [Tooltip("Current life phase (read-only, shown for information).")]
     public PlantPhase currentPhase;
-    [Tooltip("Tick: end the current phase now and move on to the next enabled one (for testing).")]
+    [Tooltip("Tick: end the current phase now and move on to the next enabled one. This is the trigger for phases " +
+             "set to 'On Trigger' in the settings; it also ends automatic phases early (for testing).")]
     public bool skipToNextPhase;
 
     [Header("Randomization")]
@@ -64,6 +65,15 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
         visuals = new PlantVisuals(transform, GetComponent<MeshFilter>(), GetComponent<MeshRenderer>());
         ResetPlant();
     }
+
+    /// <summary>
+    /// Ends the current phase and starts the next one: the trigger for phases set to OnTrigger
+    /// (e.g. called by an intervention), also ends automatic phases early.
+    /// </summary>
+    public void TriggerNextPhase() => sim?.EnterNextPhase();
+
+    /// <summary>Moves on to the given phase (through the ones in between).</summary>
+    public void TriggerPhase(PlantPhase phase) => sim?.AdvanceTo(phase);
 
     [ContextMenu("Regrow")]
     public void ResetPlant()
@@ -200,7 +210,7 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
         if (regrow) { regrow = false; ResetPlant(); }//immediately reset to false after regrow was pressed
         if (randomize) { randomize = false; Randomize(); }
         if (useOriginalSettings) { useOriginalSettings = false; UseOriginalSettings(); }
-        if (skipToNextPhase) { skipToNextPhase = false; sim?.EnterNextPhase(); }
+        if (skipToNextPhase) { skipToNextPhase = false; TriggerNextPhase(); }
         //a different asset was assigned -> the randomized copy belongs to the old one, drop it
         if (randomizedSettings != null && randomizedFrom != settings) DropRandomizedCopy();
 
