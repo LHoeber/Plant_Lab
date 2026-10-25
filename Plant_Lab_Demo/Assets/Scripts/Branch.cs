@@ -44,6 +44,9 @@ public class Branch
     public readonly List<float> nodeBirth = new List<float>();       //sim time the node was formed
     public readonly List<float> nodeArc = new List<float>();    //distance from the branch base
     public readonly List<float> nodeRadiusCap = new List<float>();   //pressed against an obstacle with no way out: stopped thickening here
+    public bool hasRadiusCaps;      //any node has a finite nodeRadiusCap (then the radius profile is smoothed around it)
+    public readonly GrowthStop stop = new GrowthStop(); //when its stopped pieces may thicken again
+    readonly List<float> capProfile = new List<float>();             //caps after smoothing (UpdateGeometry)
     // joints: every node can bend (node 0 = where the branch meets its parent / the ground)
     public readonly List<Quaternion> jointBend = new List<Quaternion>();   //current bend at this node
     public readonly List<Quaternion> jointTarget = new List<Quaternion>(); //bend it relaxes back to (identity = as grown; drifts toward the bend = it becomes permanent)
@@ -303,9 +306,24 @@ public class Branch
             unshifted += segDir[k] * segLength[k];
             nodes[k + 1] = unshifted + nodeShift[k + 1];
         }
+        if (!hasRadiusCaps)
+        {
+            for (int k = 0; k < nodes.Count; k++) nodeRadius[k] = sim.RadiusAt(this, nodeArc[k], t - nodeBirth[k]);
+            return;
+        }
+        //a stopped piece limits its neighbors too, rising gently with distance (at most CapSlope radius per length):
+        //a long, smooth narrowing instead of a sharp ring around the stem
+        capProfile.Clear();
         for (int k = 0; k < nodes.Count; k++)
-            nodeRadius[k] = Mathf.Min(sim.RadiusAt(this, nodeArc[k], t - nodeBirth[k]), nodeRadiusCap[k]);
+            capProfile.Add(k == 0 ? nodeRadiusCap[0] : Mathf.Min(nodeRadiusCap[k], capProfile[k - 1] + CapSlope * (nodeArc[k] - nodeArc[k - 1])));
+        for (int k = nodes.Count - 2; k >= 0; k--)
+            capProfile[k] = Mathf.Min(capProfile[k], capProfile[k + 1] + CapSlope * (nodeArc[k + 1] - nodeArc[k]));
+        for (int k = 0; k < nodes.Count; k++)
+            nodeRadius[k] = Mathf.Min(sim.RadiusAt(this, nodeArc[k], t - nodeBirth[k]), capProfile[k]);
     }
+
+    /// <summary>How steeply the radius may rise next to a stopped piece of stem (radius per length; 0.15 = about 8.5 degrees).</summary>
+    const float CapSlope = 0.15f;
 
     // --- bending ---
 

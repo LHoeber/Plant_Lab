@@ -53,7 +53,7 @@ MonoBehaviour:
     min: 0
     max: 180
   - name: pFlower
-    value: 0.2
+    value: 0.099
     min: 0
     max: 1
   - name: startLen
@@ -105,9 +105,9 @@ MonoBehaviour:
   flowerDelay: 5
   budGrowDuration: 3
   flowerOpenDuration: 8
-  maxFlowerSize: 0.5
-  flowerSizeNoise: 0.1
-  fruitSetProbability: 0.25
+  maxFlowerSize: 0.8
+  flowerSizeNoise: 0.15
+  fruitSetProbability: 0.5
   fruitDevelopDuration: 6
   maxBranches: 300
   maxLeaves: 1500

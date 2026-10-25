@@ -23,6 +23,11 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
     [Tooltip("Tick to restart growth from scratch with the current seed (and current, possibly randomized, settings).")]
     public bool regrow;//immediately set back to false when clicked -> acts like toggle for reset
     const int MaxStepsPerFrame = 200;
+    [Tooltip("Milliseconds per frame the simulation may use at most. If it needs more to keep up with simSpeed, " +
+             "the plant grows slower than real time instead of the frame rate collapsing.")]
+    [Range(2f, 100f)] public float simBudgetMs = 15f;
+    [Tooltip("Read-only: simulation steps and milliseconds in the last frame, and whether it fell behind real time.")]
+    public string simLoad;
 
     [Header("Phases")]
     [Tooltip("Current life phase (read-only, shown for information).")]
@@ -90,22 +95,26 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
             //leaves and flowers need their size to be checked against obstacles before they appear
             if (s != shapesBuiltFor) BuildShapes(s);//prefabs are voxelized once per settings asset, not on every regrow
             sim.LeafShapes = leafShapes;
+            sim.LeafShapesCoarse = leafShapesCoarse;
             sim.FlowerShapes = flowerShapes;
         }
         if (s == null) Debug.LogWarning("PlantGrowth: no PlantSettings asset assigned.", this);
     }
 
     OrganCompound[] leafShapes, flowerShapes;//collision shapes of the leaf/flower prefabs
+    OrganCompound[] leafShapesCoarse;        //a few boxes per leaf, for self-collision (there are many leaves)
+    const int CoarseLeafResolution = 4;
     PlantSettings shapesBuiltFor;
 
     void BuildShapes(PlantSettings s)
     {
         leafShapes = BuildShapes(s.leafPrefabs, PlantSettings.DefaultVoxelResolution, keepRootScale: false);//leaves: visuals set their scale
+        leafShapesCoarse = BuildShapes(s.leafPrefabs, CoarseLeafResolution, keepRootScale: false, forceResolution: true);
         flowerShapes = BuildShapes(s.flowerPrefabs, PlantSettings.DefaultVoxelResolution, keepRootScale: true);//flowers: FlowerMorph keeps it
         shapesBuiltFor = s;
     }
 
-    static OrganCompound[] BuildShapes(GameObject[] prefabs, int defaultResolution, bool keepRootScale)
+    static OrganCompound[] BuildShapes(GameObject[] prefabs, int defaultResolution, bool keepRootScale, bool forceResolution = false)
     {
         if (prefabs == null) return null;
         var shapes = new OrganCompound[prefabs.Length];
@@ -113,7 +122,7 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
         {
             if (prefabs[i] == null) continue;
             var settingsOnPrefab = prefabs[i].GetComponent<OrganCollisionShape>();
-            int res = settingsOnPrefab != null ? settingsOnPrefab.resolution : defaultResolution;
+            int res = settingsOnPrefab != null && !forceResolution ? settingsOnPrefab.resolution : defaultResolution;
             //flowers: copy the morph settings, so the simulation knows each flower's current pose and size,
             //and voxelize every pose (states + in-between steps), so the collision shape changes gradually
             var morph = prefabs[i].GetComponent<FlowerMorph>();
@@ -227,16 +236,19 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
         accumulator += Time.deltaTime * simSpeed;//avoids plant growing faster on fast PC
         float dt = PlantSettings.DeltaT;
         int steps = 0;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         //multiple steps are done in one frame if that frame takes too long to process on PC
-        while (accumulator >= dt && steps < MaxStepsPerFrame)
+        while (accumulator >= dt && steps < MaxStepsPerFrame && clock.Elapsed.TotalMilliseconds < simBudgetMs)
         {
             if (sim.Step(dt)) meshDirty = true;
             accumulator -= dt;
             steps++;
         }
-        //if the frames are so slow that many steps have to be done within (making the frame even slower), the game can freeze
-        //capping maximum steps avoids this, even if step timing isn't accurate anymore
-        if (steps == MaxStepsPerFrame) accumulator = 0f;
+        //out of time (or steps) before catching up: drop the backlog. Otherwise every following frame would have to do
+        //even more steps, get slower, fall further behind ... until the game freezes ("spiral of death")
+        bool behind = accumulator >= dt;
+        if (behind) accumulator = 0f;
+        simLoad = $"{steps} steps, {clock.Elapsed.TotalMilliseconds:0.0} ms{(behind ? " - slower than real time" : "")}";
 
         //a slider in the settings asset was moved -> shape sliders take effect immediately, even while paused
         if (s.Version != settingsVersion) { settingsVersion = s.Version; meshDirty = true; }

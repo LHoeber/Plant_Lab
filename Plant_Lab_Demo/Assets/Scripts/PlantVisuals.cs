@@ -311,16 +311,26 @@ public class PlantVisuals
             rb.interpolation = RigidbodyInterpolation.Interpolate;
         }
 
-        /// <summary>Bounding box of all its renderers, in this organ's own local space.</summary>
+        /// <summary>Bounding box of all its renderers as they look right now, in this organ's own local space.</summary>
         Bounds LocalBounds()
         {
             bool any = false;
             Bounds result = new Bounds(Vector3.zero, Vector3.zero);
             Matrix4x4 toRoot = t.worldToLocalMatrix;
+            Mesh baked = null;
             foreach (Renderer r in renderers)
             {
                 Bounds lb;
-                if (r is SkinnedMeshRenderer smr) lb = smr.localBounds;
+                if (r is SkinnedMeshRenderer smr)
+                {
+                    if (smr.sharedMesh == null) continue;
+                    //a skinned renderer's own bounds are fixed: they enclose every shape key state (e.g. the full-grown fruit).
+                    //the mesh baked with the current shape key weights has the size it actually has now
+                    if (baked == null) baked = new Mesh();
+                    smr.BakeMesh(baked);
+                    baked.RecalculateBounds();
+                    lb = baked.bounds;
+                }
                 else if (r.TryGetComponent(out MeshFilter mf) && mf.sharedMesh != null) lb = mf.sharedMesh.bounds;
                 else continue;
                 Matrix4x4 m = toRoot * r.transform.localToWorldMatrix;
@@ -333,6 +343,7 @@ public class PlantVisuals
                     else result.Encapsulate(p);
                 }
             }
+            if (baked != null) Object.Destroy(baked);
             return result;
         }
 

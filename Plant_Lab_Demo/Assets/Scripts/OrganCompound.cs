@@ -23,6 +23,24 @@ public class OrganCompound
     public float rootScale = 1f;    //the prefab root's own scale, if the visuals keep it (flowers); 1 for leaves
     public MorphInfo morph;         //flowers: which pose belongs to which growth/withering state; null for leaves
 
+    /// <summary>One box around all boxes of all poses (organ space, size 1): a cheap first test before the detailed boxes.</summary>
+    public OrganBox Hull
+    {
+        get
+        {
+            if (!hullReady && union != null && union.Length > 0)
+            {
+                Vector3 lo = union[0].center - union[0].half, hi = union[0].center + union[0].half;
+                foreach (OrganBox b in union) { lo = Vector3.Min(lo, b.center - b.half); hi = Vector3.Max(hi, b.center + b.half); }
+                hull = new OrganBox { center = (lo + hi) * 0.5f, half = (hi - lo) * 0.5f };
+                hullReady = true;
+            }
+            return hull;
+        }
+    }
+    OrganBox hull;
+    bool hullReady;
+
     /// <summary>Boxes for a flower's current progress values (or the union, if it has no morph info).</summary>
     public OrganBox[] BoxesFor(float openProgress, float fruitProgress, float wither, out float morphScale)
     {

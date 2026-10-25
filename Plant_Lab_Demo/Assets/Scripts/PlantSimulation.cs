@@ -40,6 +40,12 @@ public class PlantSimulation
     /// </summary>
     public OrganCompound[] LeafShapes, FlowerShapes;
 
+    /// <summary>Coarser leaf shapes (a few boxes each) for self-collision, where leaves are many; null = use LeafShapes.</summary>
+    public OrganCompound[] LeafShapesCoarse;
+
+    /// <summary>The plant as an obstacle for its own leaves and flowers (null = self-collision off).</summary>
+    public readonly PlantSelfCollision Self;
+
     /// <summary>What decides where branches, leaves and flowers appear (classic spawn logic or L-system rules).</summary>
     public readonly IPlantDevelopment Development;
 
@@ -52,6 +58,7 @@ public class PlantSimulation
         //main stem: starts at the origin, growing up; any vector perpendicular to up works as reference axis
         Root = new Branch(seed, 0, null, 0, 0f, 0f, Vector3.zero, Vector3.up, Vector3.forward, 0f);
         Branches.Add(Root);
+        if (settings.selfCollision) Self = new PlantSelfCollision();
         Development = settings.development == DevelopmentMode.LSystem
             ? new LSystemDevelopment(settings) : (IPlantDevelopment)new ClassicDevelopment();
         Development.Begin(this);
@@ -251,6 +258,7 @@ public class PlantSimulation
             dir = b.segRest[last],//as grown; bending and tilting are applied on top
         };
         b.flower = flower;
+        flower.index = Flowers.Count;
         Flowers.Add(flower);
     }
 
@@ -462,7 +470,16 @@ public class PlantSimulation
             anyBend |= b.HasBends;
         }
         if (anyBend) foreach (Branch b in Branches) b.UpdateGeometry(this);
-        if (Obstacles == null) return;
+        //self-collision only at its own rate (e.g. 20 per sim second): in the other steps organs keep their last result
+        bool self = Self != null && SimTime >= nextSelfCheck - 1e-6f;
+        if (self)
+        {
+            nextSelfCheck += 1f / Mathf.Max(1f, s.selfCollisionRate);
+            if (nextSelfCheck < SimTime) nextSelfCheck = SimTime;
+            selfRound++;
+        }
+        if (Obstacles == null && !self) return;
+        if (self) Self.Rebuild(this);
 
         bool stillTouching = false;
         //speed limits: how far each node / organ may turn in this whole step, shared by all contacts and passes
@@ -477,46 +494,65 @@ public class PlantSimulation
             bool any = false;
             foreach (Branch b in Branches) b.movedThisPass = false;
 
-            //branches: each segment as a capsule of its current thickness
-            foreach (Branch b in Branches)
-            {
-                if (pass > 0 && !b.affectedLastPass) continue;
-                if (!b.NearObstacle(Obstacles)) continue;
-                for (int k = 0; k < b.SegmentCount; k++)
+            //branches: each segment as a capsule of its current thickness (obstacles only: stems don't avoid each other)
+            if (Obstacles != null)
+                foreach (Branch b in Branches)
                 {
-                    float r = Mathf.Max(b.nodeRadius[k], b.nodeRadius[k + 1]);
-                    if (r < 1e-4f) continue;
-                    if (Obstacles.CapsulePenetration(b.nodes[k], b.nodes[k + 1], r + 0.5f * s.obstacleClearance, out Vector3 push))
+                    if (pass > 0 && !b.affectedLastPass) continue;
+                    if (!b.NearObstacle(Obstacles)) continue;
+                    for (int k = 0; k < b.SegmentCount; k++)
                     {
-                        //first a local sideways shift (the stem keeps thickening and moves away, like a dent),
-                        //only what that can't do goes to bending
-                        Vector3 rest = b.ShiftAway(k, push * 1.02f, moveStep, MaxShiftRadii, s.obstacleClearance);
-                        b.lastContactTime = SimTime;//pressed: no elastic springback for now
-                        b.movedThisPass = true;
-                        if (rest.sqrMagnitude > 1e-12f) PushBranch(b, k, (b.nodes[k] + b.nodes[k + 1]) * 0.5f, rest, nodeStep);
-                        any = true;
+                        float r = Mathf.Max(b.nodeRadius[k], b.nodeRadius[k + 1]);
+                        if (r < 1e-4f) continue;
+                        if (Obstacles.CapsulePenetration(b.nodes[k], b.nodes[k + 1], r + 0.5f * s.obstacleClearance, out Vector3 push))
+                        {
+                            //first a local sideways shift (the stem keeps thickening and moves away, like a dent),
+                            //only what that can't do goes to bending
+                            Vector3 rest = b.ShiftAway(k, push * 1.02f, moveStep, MaxShiftRadii, s.obstacleClearance);
+                            b.lastContactTime = SimTime;//pressed: no elastic springback for now
+                            b.movedThisPass = true;
+                            if (rest.sqrMagnitude > 1e-12f) PushBranch(b, k, (b.nodes[k] + b.nodes[k + 1]) * 0.5f, rest, nodeStep);
+                            any = true;
+                        }
                     }
                 }
-            }
-            //leaves: tilt at their base first, the rest bends the branch
-            foreach (Leaf leaf in Leaves)
+            //leaves: obstacles: tilt at their base first, the rest bends the branch;
+            //the plant itself (stems, flowers): the leaf only tilts out of the way
+            for (int li = 0; li < Leaves.Count; li++)
             {
+                Leaf leaf = Leaves[li];
                 if (pass > 0 && !leaf.branch.affectedLastPass && !leaf.movedThisStep) continue;
-                if (LeafWither(leaf) >= 1f || !LeafPush(leaf, out Vector3 push, out Vector3 at)) continue;
-                any = true;
-                push = TiltOrgan(ref leaf.tilt, ref leaf.tiltUsed, leaf.branch.RotAt(leaf.seg), LeafBasePos(leaf), push, at, s.leafMaxTiltDeg, organStep);
-                leaf.movedThisStep = true;
-                if (push.sqrMagnitude > 1e-12f) PushBranch(leaf.branch, leaf.seg, at, push, nodeStep);
+                if (LeafWither(leaf) >= 1f) continue;
+                if (LeafPush(leaf, out Vector3 push, out Vector3 at))
+                {
+                    any = true;
+                    push = TiltOrgan(ref leaf.tilt, ref leaf.tiltUsed, leaf.branch.RotAt(leaf.seg), LeafBasePos(leaf), push, at, s.leafMaxTiltDeg, organStep);
+                    leaf.movedThisStep = true;
+                    if (push.sqrMagnitude > 1e-12f) PushBranch(leaf.branch, leaf.seg, at, push, nodeStep);
+                }
+                if (self && (pass == 0 ? SelfAwake(leaf, li) : leaf.selfTouching) && LeafSelfPush(leaf, out push, out at))
+                {
+                    any = true;
+                    TiltOrgan(ref leaf.tilt, ref leaf.tiltUsed, leaf.branch.RotAt(leaf.seg), LeafBasePos(leaf), push, at, s.leafMaxTiltDeg, organStep);
+                    leaf.movedThisStep = true;
+                }
             }
-            //flowers/fruits: tilt first, the rest bends the branch
+            //flowers/fruits: obstacles: tilt first, the rest bends the branch;
+            //stems and earlier flowers: tilt first, the rest bends its own branch (a twig bends more easily than a flower clips)
             foreach (Flower f in Flowers)
             {
                 if (pass > 0 && !f.branch.affectedLastPass && !f.movedThisStep) continue;
-                if (FlowerWither(f) >= 1f || !FlowerPush(f, out Vector3 push, out Vector3 at)) continue;
-                any = true;
-                push = TiltOrgan(ref f.tilt, ref f.tiltUsed, f.branch.RotAt(f.seg + 1), FlowerPosition(f), push, at, s.flowerMaxTiltDeg, organStep);
-                f.movedThisStep = true;
-                if (push.sqrMagnitude > 1e-12f) PushBranch(f.branch, f.seg, at, push, nodeStep);
+                if (FlowerWither(f) >= 1f) continue;
+                for (int source = 0; source < 2; source++)
+                {
+                    Vector3 push, at;
+                    if (source == 0 ? !FlowerPush(f, out push, out at)
+                                    : !(self && (pass == 0 ? SelfAwake(f) : f.selfTouching) && FlowerSelfPush(f, out push, out at))) continue;
+                    any = true;
+                    push = TiltOrgan(ref f.tilt, ref f.tiltUsed, f.branch.RotAt(f.seg + 1), FlowerPosition(f), push, at, s.flowerMaxTiltDeg, organStep);
+                    f.movedThisStep = true;
+                    if (push.sqrMagnitude > 1e-12f) PushBranch(f.branch, f.seg, at, push, nodeStep);
+                }
             }
 
             stillTouching = any;
@@ -528,35 +564,174 @@ public class PlantSimulation
                 if (b.affectedLastPass) b.UpdateGeometry(this);
             }
         }
-        if (stillTouching) StopStuckOrgans();
+        if (stillTouching) StopStuckOrgans(dt);
+        ReleaseFreedCaps(dt);
     }
 
     /// <summary>
     /// Whatever still touches after all passes stops growing at its current size: organs stop growing, branch pieces
-    /// stop thickening. While it still touches, it shrinks very slowly (0.5% per step) to get free.
+    /// stop thickening. While it still touches, it shrinks slowly (StuckShrinkRate) to get free.
+    /// Stems only stop for obstacles; organs also for the plant's own stems and flowers.
     /// </summary>
-    void StopStuckOrgans()
+    void StopStuckOrgans(float dt)
     {
+        float shrink = 1f - StuckShrinkRate * dt;
+        if (Obstacles != null)
+            foreach (Branch b in Branches)
+            {
+                if (!b.NearObstacle(Obstacles)) continue;
+                for (int k = 0; k < b.SegmentCount; k++)
+                    if (SegmentTouches(b, k))
+                    {
+                        b.nodeRadiusCap[k] = b.nodeRadius[k] * shrink;
+                        b.nodeRadiusCap[k + 1] = b.nodeRadius[k + 1] * shrink;
+                        b.hasRadiusCaps = true;
+                        b.stop.Stuck(SimTime);
+                    }
+            }
+        foreach (Leaf leaf in Leaves)
+            if (LeafWither(leaf) < 1f && LeafTouches(leaf)) { leaf.sizeCap = LeafSize(leaf) * shrink; leaf.stop.Stuck(SimTime); }
+        foreach (Flower f in Flowers)
+            if (FlowerWither(f) < 1f && FlowerTouches(f)) { f.sizeCap = FlowerSize(f) * shrink; f.stop.Stuck(SimTime); }
+    }
+    /// <summary>How fast something stuck shrinks while it still touches (fraction per sim second).</summary>
+    const float StuckShrinkRate = 0.1f;
+
+    /// <summary>
+    /// Stops are only for as long as something is in the way: a stem piece or organ that doesn't touch anymore
+    /// (e.g. its neighbor bent away) slowly resumes growing, after waiting a while (GrowthStop: the wait doubles each
+    /// time it grows back into the same obstacle, so it doesn't pulsate). Without this, a moment of being stuck while
+    /// still thin left a permanent narrow ring in a stem that thickened everywhere else.
+    /// </summary>
+    void ReleaseFreedCaps(float dt)
+    {
+        float grow = 1f + CapReleaseRate * dt;
         foreach (Branch b in Branches)
         {
-            if (!b.NearObstacle(Obstacles)) continue;
-            for (int k = 0; k < b.SegmentCount; k++)
+            if (!b.hasRadiusCaps || !b.stop.MayGrow(SimTime)) continue;
+            bool anyLeft = false;
+            for (int k = 0; k < b.nodeRadiusCap.Count; k++)
             {
-                float r = Mathf.Max(b.nodeRadius[k], b.nodeRadius[k + 1]);
-                if (r < 1e-4f) continue;
-                if (Obstacles.CapsulePenetration(b.nodes[k], b.nodes[k + 1], r + 0.5f * Settings.obstacleClearance, out _))
-                {
-                    b.nodeRadiusCap[k] = b.nodeRadius[k] * StuckShrink;
-                    b.nodeRadiusCap[k + 1] = b.nodeRadius[k + 1] * StuckShrink;
-                }
+                if (float.IsPositiveInfinity(b.nodeRadiusCap[k])) continue;
+                bool touching = (k > 0 && SegmentTouches(b, k - 1)) || (k < b.SegmentCount && SegmentTouches(b, k));
+                if (!touching) b.nodeRadiusCap[k] *= grow;
+                //back above the radius it would have anyway: no stop anymore
+                if (b.nodeRadiusCap[k] > RadiusAt(b, b.nodeArc[k], SimTime - b.nodeBirth[k])) b.nodeRadiusCap[k] = float.PositiveInfinity;
+                else anyLeft = true;
             }
+            b.hasRadiusCaps = anyLeft;
         }
         foreach (Leaf leaf in Leaves)
-            if (LeafWither(leaf) < 1f && LeafPush(leaf, out _, out _)) leaf.sizeCap = LeafSize(leaf) * StuckShrink;
+        {
+            if (float.IsPositiveInfinity(leaf.sizeCap) || LeafWither(leaf) >= 1f || LeafTouches(leaf)) continue;
+            if (!leaf.stop.MayGrow(SimTime)) continue;
+            leaf.sizeCap *= grow;
+            if (leaf.sizeCap > LeafTargetSize(leaf)) leaf.sizeCap = float.PositiveInfinity;
+        }
         foreach (Flower f in Flowers)
-            if (FlowerWither(f) < 1f && FlowerPush(f, out _, out _)) f.sizeCap = FlowerSize(f) * StuckShrink;
+        {
+            if (float.IsPositiveInfinity(f.sizeCap) || FlowerWither(f) >= 1f || FlowerTouches(f)) continue;
+            if (!f.stop.MayGrow(SimTime)) continue;
+            f.sizeCap *= grow;
+            if (f.sizeCap > FlowerTargetSize(f)) f.sizeCap = float.PositiveInfinity;
+        }
     }
-    const float StuckShrink = 0.995f;
+    /// <summary>How fast a freed stop grows back (fraction per sim second; 0.1 = 10% per second).</summary>
+    const float CapReleaseRate = 0.1f;
+
+    bool SegmentTouches(Branch b, int k)
+    {
+        if (Obstacles == null) return false;
+        float r = Mathf.Max(b.nodeRadius[k], b.nodeRadius[k + 1]);
+        return r >= 1e-4f && Obstacles.CapsulePenetration(b.nodes[k], b.nodes[k + 1], r + 0.5f * Settings.obstacleClearance, out _);
+    }
+
+    //the self-collision part: the result of the organ's last check (it's only checked again when something changed)
+    bool LeafTouches(Leaf leaf) => leaf.selfTouching || LeafPush(leaf, out _, out _);
+    bool FlowerTouches(Flower f) => f.selfTouching || FlowerPush(f, out _, out _);
+
+    float nextSelfCheck;//sim time of the next self-collision check
+    int selfRound;      //counts self-collision checks (for spreading the occasional re-checks of resting organs)
+
+    /// <summary>
+    /// Does a leaf need a self-collision check in this round? Only if it touched something last time, or it moved,
+    /// turned or grew since its last check, or it's its turn for the occasional re-check (every SelfRecheckRounds
+    /// rounds, spread over the leaves) that notices neighbors growing into a resting leaf.
+    /// </summary>
+    bool SelfAwake(Leaf leaf, int index)
+    {
+        if (leaf.selfTouching || (selfRound + index) % SelfRecheckRounds == 0) return true;
+        OrganCompound shape = LeafSelfShape(leaf);
+        if (shape == null) return false;
+        return Changed(LeafBasePos(leaf), LeafRotationNow(leaf), LeafSize(leaf) * shape.rootScale,
+                       leaf.selfCheckedPos, leaf.selfCheckedRot, leaf.selfCheckedScale);
+    }
+
+    /// <summary>Same for a flower; a change of pose (opening, fruit, wilting) also counts.</summary>
+    bool SelfAwake(Flower f)
+    {
+        if (f.selfTouching || (selfRound + f.index) % SelfRecheckRounds == 0) return true;
+        if (!FlowerShape(f, out _, out OrganBox[] boxes, out float scale)) return false;
+        return boxes != f.selfCheckedBoxes ||
+               Changed(FlowerPosition(f), FlowerRotation(f), scale, f.selfCheckedPos, f.selfCheckedRot, f.selfCheckedScale);
+    }
+    const int SelfRecheckRounds = 25;
+
+    static bool Changed(Vector3 pos, Quaternion rot, float scale, Vector3 pos0, Quaternion rot0, float scale0) =>
+        scale0 < 0f
+        || (pos - pos0).sqrMagnitude > 1e-6f                        //moved more than 1 mm
+        || Quaternion.Dot(rot, rot0) < 0.99999f                     //turned more than about half a degree
+        || Mathf.Abs(scale - scale0) > 0.01f * Mathf.Max(scale, 1e-4f); //grew or shrank by more than 1%
+
+    /// <summary>The shape a leaf uses for self-collision: the coarse one if there is one.</summary>
+    OrganCompound LeafSelfShape(Leaf leaf)
+    {
+        OrganCompound[] shapes = LeafShapesCoarse ?? LeafShapes;
+        if (shapes == null || leaf.variant < 0 || leaf.variant >= shapes.Length) return null;
+        return shapes[leaf.variant];
+    }
+
+    /// <summary>How far a leaf reaches into the plant's own stems and flowers (its own stem excluded).</summary>
+    bool LeafSelfPush(Leaf leaf, out Vector3 push, out Vector3 at)
+    {
+        push = at = Vector3.zero;
+        OrganCompound shape = LeafSelfShape(leaf);
+        if (shape == null) return false;
+        float scale = LeafSize(leaf) * shape.rootScale;
+        Vector3 pos = LeafBasePos(leaf);
+        Quaternion rot = LeafRotationNow(leaf);
+        leaf.selfTouching = Self.Push(shape, shape.union, pos, rot, scale, pos, SelfBaseMargin * shape.boundsRadius * scale,
+                                      int.MaxValue, 0.5f * Settings.obstacleClearance, out push, out at);
+        leaf.selfCheckedPos = pos; leaf.selfCheckedRot = rot; leaf.selfCheckedScale = scale;
+        return leaf.selfTouching;
+    }
+
+    /// <summary>How far a flower reaches into the plant's own stems (its own stem excluded) and the flowers before it.</summary>
+    bool FlowerSelfPush(Flower f, out Vector3 push, out Vector3 at)
+    {
+        push = at = Vector3.zero;
+        if (!FlowerShape(f, out OrganCompound shape, out OrganBox[] boxes, out float scale)) return false;
+        Vector3 pos = FlowerPosition(f);
+        Quaternion rot = FlowerRotation(f);
+        f.selfTouching = Self.Push(shape, boxes, pos, rot, scale, pos, SelfBaseMargin * shape.boundsRadius * scale,
+                                   f.index, 0.5f * Settings.obstacleClearance, out push, out at);
+        f.selfCheckedPos = pos; f.selfCheckedRot = rot; f.selfCheckedScale = scale; f.selfCheckedBoxes = boxes;
+        return f.selfTouching;
+    }
+    /// <summary>Stems this close to an organ's base (fraction of the organ's size, beyond the stem's radius) carry it: not obstacles.</summary>
+    const float SelfBaseMargin = 0.15f;
+
+    /// <summary>A flower's collision boxes in its current pose, and the scale they're used at (false if it has no shape).</summary>
+    public bool FlowerShape(Flower f, out OrganCompound shape, out OrganBox[] boxes, out float scale)
+    {
+        shape = null; boxes = null; scale = 0f;
+        if (FlowerShapes == null || f.variant < 0 || f.variant >= FlowerShapes.Length || FlowerShapes[f.variant] == null) return false;
+        shape = FlowerShapes[f.variant];
+        boxes = shape.BoxesFor(FlowerGrowth(f), FruitProgress(f), FlowerWither(f), out float morphScale);
+        scale = FlowerSize(f) * morphScale * shape.rootScale;
+        return boxes != null && scale > 1e-4f;
+    }
+
 
     /// <summary>
     /// Bends a branch so that point X moves by `push`: nodes from the touching segment back to the plant's base
@@ -680,7 +855,7 @@ public class PlantSimulation
     bool OrganPush(OrganCompound shape, OrganBox[] boxes, Vector3 pos, Quaternion rot, float scale, out Vector3 push, out Vector3 at)
     {
         push = at = Vector3.zero;
-        if (scale < 1e-4f || boxes == null) return false;
+        if (Obstacles == null || scale < 1e-4f || boxes == null) return false;
         float gap = 0.5f * Settings.obstacleClearance;
         if (!Obstacles.AnyWithin(pos + rot * (shape.boundsCenter * scale), shape.boundsRadius * scale + gap)) return false;
         int n = 0;
@@ -792,6 +967,7 @@ public class PlantSimulation
             dir = heading.normalized,
         };
         if (branch.flower == null) branch.flower = flower;
+        flower.index = Flowers.Count;
         Flowers.Add(flower);
         return flower;
     }

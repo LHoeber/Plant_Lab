@@ -236,6 +236,13 @@ public class PlantSettings : ScriptableObject
     [NoRandomize][Range(5, 1000)] public int maxFlowers = 200;
 
     [Header("Collisions")]
+    [Tooltip("Leaves and flowers keep out of the plant's own stems (except the one they grow on); leaves give way to " +
+             "flowers, and flowers to the flowers that appeared before them. Stems don't avoid each other. " +
+             "Costs performance with many leaves.")]
+    [NoRandomize] public bool selfCollision = true;
+    [Tooltip("How often per sim second leaves and flowers are checked against the plant itself (the simulation runs at 50). " +
+             "Lower = faster; organs only move a few millimeters in between.")]
+    [NoRandomize][Range(5f, 50f)] public float selfCollisionRate = 20f;
     [Tooltip("Gap a growing tip keeps from obstacles; it slides along them at this distance.")]
     [Length][NoRandomize][Range(0.001f, 0.02f)] public float obstacleClearance = 0.005f;
     [Tooltip("A leaf touching an obstacle first turns at its base (like a bending leaf stalk), by up to this angle (degrees) in total.")]
