@@ -73,6 +73,7 @@ public sealed class LSystem
         //slot layout for evaluation: [rule parameters..., constants...]; the axiom has no parameters, only constants
         try
         {
+            LExpression.Random = null;//rand(a, b) in the axiom: the middle (no seeded stream yet)
             Axiom = ParseModules(axiom ?? "", ResolverFor(new string[0]), "axiom")
                 .ConvertAll(m => new LModule(m.symbol, EvalArgs(m.args, ConstantValues))).ToArray();
             var axiomModules = new (char, LExpression[])[Axiom.Length];
@@ -212,6 +213,7 @@ public sealed class LSystem
     {
         candidates.Clear();
         slots = null;
+        LExpression.Random = rng;//rand(a, b) in conditions, weights and successors draws from this module's stream
         if (!bySymbol.TryGetValue(m.Symbol, out var rules)) return null;
         foreach (LRule r in rules)
         {

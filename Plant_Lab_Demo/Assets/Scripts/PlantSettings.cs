@@ -117,6 +117,8 @@ public class PlantSettings : ScriptableObject
     [LSystemOnly]public string leafSymbols = "L";
     [Tooltip("Symbols that place a flower bud (one or more characters, e.g. \"K\").")]
     [LSystemOnly]public string flowerSymbols = "K";
+    [Tooltip("Cactus segment type for S(s) and ~ in the rules (a Cactus Segment asset). Empty: no cactus segments.")]
+    [LSystemOnly][NoRandomize] public CactusSegmentSettings cactusSegment;
 
     [Header("Growth")]
     [Tooltip("How fast branch tips grow, units per sim second (all branches). Changes the plant's proportions: " +

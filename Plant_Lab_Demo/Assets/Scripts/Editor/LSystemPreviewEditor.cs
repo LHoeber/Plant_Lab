@@ -23,7 +23,7 @@ public class LSystemPreviewEditor : Editor
         {
             if (prop.name == "m_Script") continue;
             if (fromSettings && (prop.name == "axiom" || prop.name == "rules" || prop.name == "constants" ||
-                                 prop.name == "angle" || prop.name == "scale")) continue;
+                                 prop.name == "angle" || prop.name == "scale" || prop.name == "cactusSegment")) continue;
             EditorGUILayout.PropertyField(prop, true);
         }
         serializedObject.ApplyModifiedProperties();

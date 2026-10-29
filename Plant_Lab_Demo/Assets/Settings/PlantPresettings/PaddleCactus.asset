@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9715b5196cca54c00a5f7b564217a862, type: 3}
+  m_Name: PaddleCactus
+  m_EditorClassIdentifier: Assembly-CSharp::CactusSegmentPreview
+  shape:
+    width: 0.297
+    height: 0.464
+    depth: 0.074
+    columnGrowth: 1
+    columnLength: 0.145
+    ballDone: 0.662
+    columnStart: 0.191
+    ribs: 7
+    ribDepth: 0.06
+    ribSharpness: 1
+    twistDeg: -57
+    tipDip: 0.295
+    tipDipWidth: 0.998
+    baseTaper: 0.797
+    areolesPerRib: 4
+    areoleStart: 0.173
+    areoleEnd: 0.93
+    staggerAreoles: 1
+    areoleJitter: 0.066
+    hillHeight: 0.097
+    hillSharpness: 1
+    witheredCore: 0.69
+  bodyMaterial: {fileID: 2100000, guid: ed64d7231b2fa4f8084dba0e2df1fe2b, type: 2}
+  rings: 49
+  columns: 122
+  tuftPrefab: {fileID: 0}
+  tuftScale: 1.56
+  tuftAxisAlignment: 1
+  tuftOffset: 0
+  tuftRandomTurn: 180

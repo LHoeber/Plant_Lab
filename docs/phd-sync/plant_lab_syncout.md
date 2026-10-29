@@ -9,10 +9,18 @@ last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-10-26
   select (max 2, FIFO) -> shutter -> Start -> camera feed + timer -> camera offline -> next LED row.
 - Not built yet: plant responses to the buttons (effects layer, hidden state), lab template with several specimens,
   logging, agent interface. Classic plant development still switchable (to be removed).
-- Cactus: segment shape done and tuned (CactusShape, CactusSegmentPreview). Next: L-system symbols + preview (now)
-  -> segment body in the simulation (growth, development, collisions, withering) -> preset beside the tree.
+- Cactus: segment shape (ball + optional tip-grown column) and rule symbols S(s), ~, rand() with preview done.
+  Next: segment body in the simulation (growth, development, collisions, withering) -> preset beside the tree.
 
 ## New entries, not yet transferred (newest first, 2 to 4 lines each)
+- 2026-10-29: Cactus step 2 built (compiles, turtle tested outside Unity): segment type as asset (CactusSegmentSettings),
+  rule symbols S(s) (segment, turtle to its tip) and ~ (to the nearest free areole; '@' was impossible: it starts a
+  rule's weight), rand(a, b) in expressions (seeded per module). LSystemPreview shows segments as meshes. Pitfall:
+  roll before pitch (/(b) &(a) ~), otherwise the roll does nothing. Next: segments in the simulation (step 3).
+- 2026-10-29: Cactus segment growth (Laura's idea): optional column growth = tip growth (a straight-sided column inserted
+  at the ball's equator lengthens at the tip, new tufts appear below the apex, lower parts stay in place; can overlap
+  with the ball still swelling). Off = ball scales up as before. Tip dip now pressed in like a finger (heart-shaped
+  side outline, can't fold through itself). Decisions: S(s) varies size only; @ angle from tip; children snap to areoles.
 - 2026-10-29: Cactus step 1 done: Laura tuned a base segment (saved in SampleScene, CactusSegmentPreview). Added
   "hills" (tubercles: a bump under every tuft, height + sharpness; strong + sharp ribs = spikes with a tuft on top).
   Wither (state, 0..1) vs Withered Core (how shriveled when fully withered) clarified in the Inspector.

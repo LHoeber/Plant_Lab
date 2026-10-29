@@ -11,6 +11,9 @@ using System.Globalization;
 ///   logic: and or not, True False    conditional: a if cond else b
 ///   functions: sin cos tan asin acos atan atan2 sqrt exp log log10 pow floor ceil abs min max round
 ///              radians degrees hypot clamp      constants: pi e tau inf
+///   rand(a, b): a random number between a and b, from the random stream set in LExpression.Random (the L-system sets
+///              its own seeded stream before evaluating a rule, so results stay reproducible). Without a stream (e.g. in
+///              the axiom) it gives the middle, (a + b) / 2. Not in the Python notebook.
 ///
 /// All values are doubles; for logic, 0 is false and anything else true (as in Python).
 /// Angles in sin/cos/... are radians (as in Python); turtle angles in rules are degrees.
@@ -21,6 +24,9 @@ public sealed class LExpression
     readonly Node root;
 
     LExpression(string text, Node root) { Text = text; this.root = root; }
+
+    /// <summary>The random stream rand(a, b) draws from (set by the L-system before evaluating; null = the middle).</summary>
+    [ThreadStatic] public static Random Random;
 
     /// <summary>Evaluates with the given variable values (slots, as numbered by the resolver used when parsing).</summary>
     public double Evaluate(double[] slots) => root.Eval(slots);
@@ -152,6 +158,7 @@ public sealed class LExpression
                 case "degrees": return A(0) * 180.0 / Math.PI;
                 case "hypot": return Math.Sqrt(A(0) * A(0) + A(1) * A(1));
                 case "clamp": return Math.Max(A(1), Math.Min(A(2), A(0)));
+                case "rand": { double lo = A(0), hi = A(1); return Random == null ? 0.5 * (lo + hi) : lo + (hi - lo) * Random.NextDouble(); }
                 case "round": return args.Length == 1 ? Math.Round(A(0)) : Math.Round(A(0), (int)A(1));//half to even, like Python
                 case "min": { double m = A(0); for (int i = 1; i < args.Length; i++) m = Math.Min(m, A(i)); return m; }
                 case "max": { double m = A(0); for (int i = 1; i < args.Length; i++) m = Math.Max(m, A(i)); return m; }
@@ -165,7 +172,7 @@ public sealed class LExpression
         ["sin"] = (1, 1), ["cos"] = (1, 1), ["tan"] = (1, 1), ["asin"] = (1, 1), ["acos"] = (1, 1), ["atan"] = (1, 1),
         ["atan2"] = (2, 2), ["sqrt"] = (1, 1), ["exp"] = (1, 1), ["log"] = (1, 2), ["log10"] = (1, 1), ["pow"] = (2, 2),
         ["floor"] = (1, 1), ["ceil"] = (1, 1), ["abs"] = (1, 1), ["radians"] = (1, 1), ["degrees"] = (1, 1),
-        ["hypot"] = (2, 2), ["clamp"] = (3, 3), ["round"] = (1, 2), ["min"] = (2, 64), ["max"] = (2, 64),
+        ["hypot"] = (2, 2), ["clamp"] = (3, 3), ["rand"] = (2, 2), ["round"] = (1, 2), ["min"] = (2, 64), ["max"] = (2, 64),
     };
 
     static readonly Dictionary<string, double> NamedConstants = new Dictionary<string, double>

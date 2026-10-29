@@ -290,6 +290,7 @@ MonoBehaviour:
     value: 0.3
     min: 0
     max: 1
+  cactusSegment: {fileID: 0}
   steps: 40
   seed: 0
   maxModules: 200000
@@ -489,28 +490,34 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 061facd43a00b4417841e8b165642294, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CactusSegmentPreview
+  segment: {fileID: 11400000, guid: 470ee6f0f2a914875955b5425e70e0fe, type: 2}
+  growth: 0.57
+  wither: 0.439
+  seed: 0
+  showAxis: 1
   shape:
     width: 0.297
     height: 0.464
-    depth: 0.086
+    depth: 0.074
+    columnGrowth: 1
+    columnLength: 0.145
+    ballDone: 0.662
+    columnStart: 0.191
     ribs: 7
     ribDepth: 0.06
     ribSharpness: 1
     twistDeg: -57
-    tipDip: 0.235
-    tipDipWidth: 0.173
-    baseTaper: 0.877
-    areolesPerRib: 7
+    tipDip: 0.295
+    tipDipWidth: 0.998
+    baseTaper: 0.797
+    areolesPerRib: 4
     areoleStart: 0.173
     areoleEnd: 0.93
     staggerAreoles: 1
     areoleJitter: 0.066
     hillHeight: 0.097
     hillSharpness: 1
-    witheredCore: 0.216
-  growth: 1
-  wither: 0
-  seed: 0
+    witheredCore: 0.69
   bodyMaterial: {fileID: 2100000, guid: ed64d7231b2fa4f8084dba0e2df1fe2b, type: 2}
   rings: 49
   columns: 122
@@ -519,7 +526,6 @@ MonoBehaviour:
   tuftAxisAlignment: 1
   tuftOffset: 0
   tuftRandomTurn: 180
-  showAxis: 1
 --- !u!4 &243603959
 Transform:
   m_ObjectHideFlags: 0
@@ -2136,6 +2142,109 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1452276870
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1452276873}
+  - component: {fileID: 1452276871}
+  m_Layer: 0
+  m_Name: Lsystem_Preview_Cactus
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1452276871
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1452276870}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7662b6942340249b5bb444d7f0d3d845, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LSystemPreview
+  fromSettings: {fileID: 0}
+  axiom: S(1) A(0)
+  rules: 'A(n) : n < 4 -> [ /(rand(0, 360)) &(rand(30, maxAngle)) ~ S(rand(0.5, 0.8))
+    K ] A(n+1)'
+  constants:
+  - name: maxAngle
+    value: 3.52
+    min: 0.5
+    max: 10
+  cactusSegment: {fileID: 11400000, guid: 470ee6f0f2a914875955b5425e70e0fe, type: 2}
+  steps: 31
+  seed: 0
+  maxModules: 200000
+  stepLength: 1
+  angle: 25
+  scale: 0.1
+  depthColors:
+    serializedVersion: 2
+    key0: {r: 0.45, g: 0.3, b: 0.15, a: 1}
+    key1: {r: 0.55, g: 0.75, b: 0.25, a: 1}
+    key2: {r: 0, g: 0, b: 0, a: 0}
+    key3: {r: 0, g: 0, b: 0, a: 0}
+    key4: {r: 0, g: 0, b: 0, a: 0}
+    key5: {r: 0, g: 0, b: 0, a: 0}
+    key6: {r: 0, g: 0, b: 0, a: 0}
+    key7: {r: 0, g: 0, b: 0, a: 0}
+    ctime0: 0
+    ctime1: 65535
+    ctime2: 0
+    ctime3: 0
+    ctime4: 0
+    ctime5: 0
+    ctime6: 0
+    ctime7: 0
+    atime0: 0
+    atime1: 65535
+    atime2: 0
+    atime3: 0
+    atime4: 0
+    atime5: 0
+    atime6: 0
+    atime7: 0
+    m_Mode: 0
+    m_ColorSpace: -1
+    m_NumColorKeys: 2
+    m_NumAlphaKeys: 2
+  markStyles:
+  - symbol: A
+    color: {r: 0.6, g: 0.85, b: 0.2, a: 1}
+    size: 0.01
+  - symbol: O
+    color: {r: 0.1, g: 0.6, b: 0.15, a: 1}
+    size: 0.03
+  - symbol: L
+    color: {r: 0.2, g: 0.65, b: 0.2, a: 1}
+    size: 0.02
+  - symbol: K
+    color: {r: 0.9, g: 0.4, b: 0.6, a: 1}
+    size: 0.03
+--- !u!4 &1452276873
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1452276870}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1462755549
 GameObject:
   m_ObjectHideFlags: 0
@@ -2912,6 +3021,7 @@ SceneRoots:
   - {fileID: 832575519}
   - {fileID: 1244977173}
   - {fileID: 192140136}
+  - {fileID: 1452276873}
   - {fileID: 243603959}
   - {fileID: 1044655172}
   - {fileID: 1784845992}
