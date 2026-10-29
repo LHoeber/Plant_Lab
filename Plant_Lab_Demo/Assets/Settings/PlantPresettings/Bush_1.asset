@@ -112,6 +112,8 @@ MonoBehaviour:
   maxBranches: 300
   maxLeaves: 1500
   maxFlowers: 200
+  selfCollision: 1
+  selfCollisionRate: 20
   obstacleClearance: 0.005
   leafMaxTiltDeg: 45
   flowerMaxTiltDeg: 30

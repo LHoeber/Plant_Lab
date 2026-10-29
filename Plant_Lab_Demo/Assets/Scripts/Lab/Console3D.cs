@@ -2,18 +2,14 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// The 3D console (on the root of the imported console model). Everything it needs is set up here at start,
-/// from the parts' names, so nothing is stored on the model itself and a re-exported model only has to keep
-/// the names: Casing, Screen, CamLeft, CamRight, CamUp, CamDown, ButtonA, ButtonB, ...
-/// - buttons get a collider (sized to their current mesh) and a PanelButton with their action
-/// - the screen gets the observation (unlit) with the static overlay
-/// - the console camera is placed in front of the screen and framed so the whole casing is visible
+/// The 3D console: puts the camera image on the screen, keeps the console lit only by its own light, and frames the
+/// console camera so the whole casing is visible. The parts are found by name ("Casing", "Screen"): from the
+/// PanelBuilder on this object if there is one (rebuilt panels included), otherwise from the children (an imported model).
 /// - all parts are put on the console's rendering layer, so only the console light lights them
 ///   (the terrarium's lights, which interventions may change, never change how the console looks)
 /// </summary>
 public class Console3D : MonoBehaviour
 {
-    public ControlPanel panel;
     public ObservationCamera observationCamera;
     [Tooltip("The camera showing the console to the participant.")]
     public Camera consoleCamera;
@@ -28,10 +24,6 @@ public class Console3D : MonoBehaviour
     [Tooltip("Turn on if the camera ends up behind the console (the Screen mesh's normal points backward).")]
     public bool flipFront = false;
 
-    [Header("Buttons")]
-    [Tooltip("How far a button moves into the casing while pressed (m).")]
-    [Range(0f, 0.02f)] public float pressDepth = 0.003f;
-
     [Header("Lighting")]
     [Tooltip("Rendering layer (bit index) of the console. The console light lights only this layer, the scene's lights don't.")]
     [Range(1, 31)] public int renderingLayer = 1;
@@ -42,70 +34,54 @@ public class Console3D : MonoBehaviour
     [Range(0f, 1f)] public float scanlines = 0.06f;
     [Range(2, 8)] public int scanlinePeriod = 3;
 
-    static readonly string[] CameraButtonNames = { "CamLeft", "CamRight", "CamUp", "CamDown" };//index = action
+    /// <summary>The screen's material (runtime copy): TrialController switches between camera image and screen texts.</summary>
+    public Material ScreenMaterial => screenInstance;
 
     Renderer casing, screen;
     Material screenInstance;
     Texture2D overlay;
     bool warnedUnreadable;
+    PanelBuilder builder;
 
     void Awake()
     {
-        var parts = new Dictionary<string, Transform>();
-        foreach (Transform t in GetComponentsInChildren<Transform>(true)) parts.TryAdd(t.name, t);
+        builder = GetComponent<PanelBuilder>();
+        if (builder != null) builder.Rebuilt += OnRebuilt;
+        FindParts();
+    }
+
+    void OnRebuilt()
+    {
+        FindParts();
+        AssignScreenMaterial();
+    }
+
+    void FindParts()
+    {
         Transform Part(string name)
         {
-            if (parts.TryGetValue(name, out Transform t)) return t;
-            Debug.LogWarning($"Console3D: the console model has no part named '{name}'.", this);
-            return null;
+            Transform t = builder != null ? builder.Part(name) : FindChild(transform, name);
+            if (t == null) Debug.LogWarning($"Console3D: the console has no part named '{name}'.", this);
+            return t;
         }
-
         casing = Part("Casing")?.GetComponent<Renderer>();
         screen = Part("Screen")?.GetComponent<Renderer>();
 
         //all parts: on this object's layer (seen by the console camera only) and the console's rendering layer
         uint mask = 1u << renderingLayer;
-        foreach (Transform t in parts.Values) t.gameObject.layer = gameObject.layer;
+        foreach (Transform t in GetComponentsInChildren<Transform>(true)) t.gameObject.layer = gameObject.layer;
         foreach (Renderer r in GetComponentsInChildren<Renderer>(true)) r.renderingLayerMask = mask;
-
-        Vector3 push = -Front() * pressDepth;
-        var known = new HashSet<string>();
-        for (int a = 0; a < CameraButtonNames.Length; a++)
-        {
-            known.Add(CameraButtonNames[a]);
-            SetUpButton(Part(CameraButtonNames[a]), a, push);
-        }
-        for (int i = 0; i < LabActions.InterventionCount; i++)
-        {
-            string name = "Button" + LabActions.ButtonLetter(i);
-            known.Add(name);
-            SetUpButton(Part(name), LabActions.ButtonA + i, push);
-        }
-        foreach (string name in parts.Keys)
-            if ((name.StartsWith("Button") || name.StartsWith("Cam")) && !known.Contains(name))
-                Debug.LogWarning($"Console3D: '{name}' looks like a button but has no action " +
-                                 $"(there are {LabActions.InterventionCount} intervention buttons). It does nothing.", this);
     }
 
-    void SetUpButton(Transform t, int action, Vector3 push)
+    static Transform FindChild(Transform t, string name)
     {
-        if (t == null) return;
-        if (t.GetComponent<Collider>() == null)
-        {
-            var box = t.gameObject.AddComponent<BoxCollider>();
-            var mf = t.GetComponent<MeshFilter>();
-            if (mf != null && mf.sharedMesh != null) { box.center = mf.sharedMesh.bounds.center; box.size = mf.sharedMesh.bounds.size; }
-        }
-        var button = t.GetComponent<PanelButton>() ?? t.gameObject.AddComponent<PanelButton>();
-        button.action = action;
-        button.panel = panel;
-        button.pressOffset = push;
+        foreach (Transform c in t.GetComponentsInChildren<Transform>(true)) if (c.name == name) return c;
+        return null;
     }
 
     void Start()
     {
         //in Start: the observation texture is created in ObservationCamera.Awake
-        if (screen == null) return;
         if (screenMaterial == null) { Debug.LogWarning("Console3D: no screen material assigned.", this); return; }
         screenInstance = new Material(screenMaterial) { name = "ConsoleScreen (runtime)" };
         if (observationCamera != null && observationCamera.Observation != null)
@@ -114,7 +90,13 @@ public class Console3D : MonoBehaviour
             overlay = StaticScreenOverlay.Generate(observationCamera.width, observationCamera.height, vignette, glare, scanlines, scanlinePeriod);
             screenInstance.SetTexture("_OverlayTex", overlay);
         }
-        var mats = new Material[screen.sharedMaterials.Length];
+        AssignScreenMaterial();
+    }
+
+    void AssignScreenMaterial()
+    {
+        if (screen == null || screenInstance == null) return;
+        var mats = new Material[Mathf.Max(1, screen.sharedMaterials.Length)];
         for (int i = 0; i < mats.Length; i++) mats[i] = screenInstance;
         screen.sharedMaterials = mats;
     }
@@ -133,7 +115,7 @@ public class Console3D : MonoBehaviour
             {
                 warnedUnreadable = true;
                 Debug.LogWarning("Console3D: can't read the Screen mesh's normal. Enable Read/Write in the console model's " +
-                                 "import settings (Model tab), or run Botanic Lab > Use 3D Console again.", this);
+                                 "import settings (Model tab).", this);
             }
         }
         return flipFront ? -n : n;
@@ -177,6 +159,7 @@ public class Console3D : MonoBehaviour
 
     void OnDestroy()
     {
+        if (builder != null) builder.Rebuilt -= OnRebuilt;
         if (screenInstance != null) Destroy(screenInstance);
         if (overlay != null) Destroy(overlay);
     }

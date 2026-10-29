@@ -1,17 +1,44 @@
 # Plant_Lab sync-out (written by Claude Code)
-last_sync_out: 2026-10-25 | transferred to claude.ai log: 2026-10-09 (last paste)
+last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-10-26
 
 ## Current state (max ~10 lines, overwritten at each sync out)
-- Unity 6000.5.10f1, URP, WebGL tablet target. One terrarium with one procedural plant; 3D console from Blender
-  (screen shows Camera A, 768x512 RenderTexture), 0.5 s tick, camera arrows in 20 degree steps.
-- Plants: L-system development (rules as text in PlantSettings, grown tip by tip) on the existing body (bending,
-  thickness, glass collisions, phases, withering); classic spawn logic still switchable (to be removed).
-- Self-collision: leaves/flowers avoid own stems, leaves yield to flowers; 20 Hz, sleeping organs, sim time budget.
-- Console still has the old per-tick 6 buttons (11 actions); superseded by paradigm v3 (trial loop + shutter).
-- Not built yet: plant responses to conditions (hidden state), trial loop, labs/multiple specimens, logging, agent API.
-- Next: settle open v3 questions (see top entry), then trial loop -> lab definition -> effects layer -> 2nd species.
+- Unity 6000.5.10f1, URP, WebGL tablet target. One terrarium with one procedural plant (L-system development on the
+  existing body: bending, thickness, glass collisions, self-collision, phases, withering).
+- Control panel: generated at Play start from a PanelConfig (buttons, trials, max on, T) and a PanelLayout (positions),
+  simple placeholder blocks for now (Blender parts can replace them). Trial workflow implemented (TrialController):
+  select (max 2, FIFO) -> shutter -> Start -> camera feed + timer -> camera offline -> next LED row.
+- Not built yet: plant responses to the buttons (effects layer, hidden state), lab template with several specimens,
+  logging, agent interface. Classic plant development still switchable (to be removed).
+- Cactus: segment shape done and tuned (CactusShape, CactusSegmentPreview). Next: L-system symbols + preview (now)
+  -> segment body in the simulation (growth, development, collisions, withering) -> preset beside the tree.
 
-## New entries since the last transfer (newest first, 2 to 4 lines each)
+## New entries, not yet transferred (newest first, 2 to 4 lines each)
+- 2026-10-29: Cactus step 1 done: Laura tuned a base segment (saved in SampleScene, CactusSegmentPreview). Added
+  "hills" (tubercles: a bump under every tuft, height + sharpness; strong + sharp ribs = spikes with a tuft on top).
+  Wither (state, 0..1) vs Withered Core (how shriveled when fully withered) clarified in the Inspector.
+  Next: step 2, L-system symbols for segments + preview (design questions to Laura).
+- 2026-10-29: Cactus preview glowed white (Bloom) with black patches. Cause: surface normals from tiny finite
+  differences; Unity's .normalized returns (0,0,0) below length 1e-5 -> NaN in the shader -> Bloom blowout.
+  Fix in CactusShape.Normal (slopes divided by the step, own normalization). Pitfall for all generated meshes.
+- 2026-10-28: Cactus (2nd plant) design agreed: segments = ribbed 3D ellipsoids (random width/height/depth, ribs, twist,
+  tip dip) growing outward from their attachment point; tufts on the rib ridges (Laura's Blender model) pointing base
+  to tip; flowers only at segment tips; withering = deflating toward a thin core; slight flexibility on contact.
+  Step 1 built: CactusShape (shape math + mesh) and CactusSegmentPreview (tune one segment in the scene).
+- (none yet)
+
+## Already transferred to the claude.ai log (reference only, do not add here)
+- 2026-10-26: Panel + trial workflow built (untested in Unity): PanelBuilder (panel from config + layout, any number of
+  buttons/trials), TrialController (states Selecting/Ready/Running/Finished, LED history, world reset per trial, screen
+  texts in a built-in pixel font, static between trials), menu "Botanic Lab > Build Trial Panel". Old per-tick console
+  removed (ControlPanel, Interventions, 2D setup). Agent hooks: History, RemainingTime, TrialStarted/TrialEnded events.
+- 2026-10-26: Panel v2 sketch: Start + "?" + timer bar on top, effect buttons + LED grid in the middle, arrows at the
+  bottom; shutter open = covers the top half, closed = covers buttons + grid. Max 2 buttons on, a 3rd press switches
+  off the oldest (FIFO). Row "done" LED: blinks while selecting, steady once the shutter is closed (logged in).
+  Panel must be generated from a config (number of buttons, trials) out of modular parts, not modelled per condition.
+- 2026-10-25 (later): Panel layout fixed from Laura's sketch: screen left; arrows, Start + "?", 2x2 effect buttons
+  (numbered 1-4, red) with shutter sliding up over Start, LED history grid (columns 1-4 red, plus one white
+  "trial done" LED per row; X = 13-15 trials). At most 2 buttons on per trial (11 combinations incl. all off).
+  Agent equivalence agreed: agent gets the same history matrix (trials x buttons + done flags) and remaining time.
 - 2026-10-25: Panel UI decisions (Laura): shutter starts open, tap closes/reopens it (selection can be changed until
   Start). "?" only between trials (lit when available); instructions in retro VCR style on the black screen.
   Selection history as an LED grid (rows = trials, columns = buttons) instead of counts per combination; timer as a

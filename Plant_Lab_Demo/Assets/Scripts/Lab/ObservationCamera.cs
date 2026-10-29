@@ -34,8 +34,21 @@ public class ObservationCamera : MonoBehaviour
     float shownAzimuth, shownElevation, azVel, elVel;
     Camera cam;
 
+    float startAzimuth, startElevation;
+
+    /// <summary>Back to the starting view, immediately (no glide): every trial starts from the same view.</summary>
+    public void ResetView()
+    {
+        azimuth = shownAzimuth = startAzimuth;
+        elevation = shownElevation = startElevation;
+        azVel = elVel = 0f;
+        Place();
+    }
+
     void Awake()
     {
+        startAzimuth = azimuth;
+        startElevation = elevation;
         cam = GetComponent<Camera>();
         Observation = new RenderTexture(width, height, 24) { name = "Observation", antiAliasing = 2 };
         cam.targetTexture = Observation;

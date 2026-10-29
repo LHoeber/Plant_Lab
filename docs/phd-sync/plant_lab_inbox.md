@@ -1,11 +1,12 @@
 # Plant_Lab inbox (mirror from the claude.ai sync hub)
-Last updated: 2026-10-25 by the "PhD topic context" session. Read-only for Claude Code.
+Last updated: 2026-10-26 by the "PhD topic context" session. Read-only for Claude Code.
 Full design text: Notion "Experimental Prototype 2" -> section "Paradigm Structure".
 
 ## Current paradigm (v3, decided 2026-10-25)
 - Trial loop, all on the control panel (no full-screen view):
   1. Choose a combination of 4 unlabelled effect buttons (panel layout adaptable by parameter).
-     The panel shows how often each combination was already tried. "?" reopens the instructions.
+     Selection history as an LED grid (rows = trials, columns = buttons; your decision 25.10).
+     "?" reopens the instructions (only between trials).
   2. Close a transparent sliding shutter over the selected buttons: locks them (they stay visible)
      and uncovers the Start button (the open shutter covers Start).
   3. Start: the camera feed on the panel screen switches on, camera arrows become active.
@@ -41,7 +42,7 @@ Full design text: Notion "Experimental Prototype 2" -> section "Paradigm Structu
 
 ## Agent equivalence
 - The agent sees only Camera A's render (terrarium), never the panel.
-- It also gets the count vector of tried combinations and the remaining time as inputs.
+- It also gets the selection history (same matrix as the LED grid, trials x buttons) and the remaining time as inputs.
 - The combination choice is one discrete action per trial.
 
 ## Logging (per tick)
@@ -55,6 +56,12 @@ Full design text: Notion "Experimental Prototype 2" -> section "Paradigm Structu
 - 2026-10-22: the game must not be an upscaled table: partial/probabilistic observation from views,
   information spread over views and time, nuisance variation (lighting, foliage), several hidden causes
   for the same symptom (droop from roots / pests / light). Lighting = controlled factor.
+
+## Open questions raised by your sync-out (answered in claude.ai or still open)
+- Combinations: resolved by you (max 2 on, FIFO, 11 combinations incl. all off).
+- Fertilizer as the noisy-TV source (decided 26.10): weeds sprout at random (positions/numbers) each trial,
+  but their effect on the plants is fixed and learnable, so the randomness stays uninformative.
+- Camera with several specimens: orbit centre vs. per plant still open (affects which views exist = observation model).
 
 ## Next builds (Laura)
 - Second alien plant (not tree-like).

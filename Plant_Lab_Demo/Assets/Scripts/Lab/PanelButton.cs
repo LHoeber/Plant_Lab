@@ -1,47 +1,47 @@
+using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.UI;
 
 /// <summary>
-/// One console button, 2D (UI image) or 3D (mesh with a collider). Reacts on press down (immediately, also on touch).
-/// Its only feedback is a brief press, shorter than one tick and only if the action was accepted:
-/// 2D: slightly smaller and darker; 3D: pushed in by pressOffset and darker.
-/// It confirms the action, never shows its effect, and nothing about it persists.
+/// One pressable part of the control panel (needs a collider; the console camera's Physics Raycaster finds it).
+/// Reacts on press down (immediately, also on touch) by calling onPress. If that accepts the press, the part
+/// gives a brief press feedback (pushed in by pressOffset and darker, shorter than one tick). Independently it can
+/// glow (emission), e.g. while an effect button is switched on or Start can be pressed.
 /// </summary>
 public class PanelButton : MonoBehaviour, IPointerDownHandler
 {
-    [Tooltip("Action index sent when pressed (0-3 camera, 4.. intervention buttons A, B, ...).")]
-    public int action;
-    public ControlPanel panel;
-    [Tooltip("Seconds the press feedback lasts (shorter than a tick).")]
+    [Tooltip("Identifies the press in logs (camera arrows: the LabActions camera action).")]
+    public int action = -1;
+    [Tooltip("Seconds the press feedback lasts.")]
     public float feedbackTime = 0.12f;
-    [Tooltip("3D buttons: how far the button moves while pressed, in world space (direction included).")]
+    [Tooltip("How far the part moves while pressed, in world space (direction included).")]
     public Vector3 pressOffset;
     [Tooltip("Color factor while pressed.")]
     [Range(0f, 1f)] public float pressDarkening = 0.75f;
 
-    static readonly int BaseColorId = Shader.PropertyToID("_BaseColor"), ColorId = Shader.PropertyToID("_Color");
+    /// <summary>Called on press; return true if the press was accepted (then the button shows its feedback).</summary>
+    public Func<bool> onPress;
 
-    Graphic graphic;
+    static readonly int BaseColorId = Shader.PropertyToID("_BaseColor"), ColorId = Shader.PropertyToID("_Color"),
+                        EmissionId = Shader.PropertyToID("_EmissionColor");
+
     Renderer rend;
     MaterialPropertyBlock block;
-    Color baseColor;
-    Vector3 baseScale, basePosition;
+    Vector3 basePosition;
     Coroutine running;
+    bool pressed;
+    Color glow = Color.black;
 
     void Awake()
     {
-        graphic = GetComponent<Graphic>();
-        if (graphic != null) baseColor = graphic.color;
-        else rend = GetComponent<Renderer>();
-        baseScale = transform.localScale;
+        rend = GetComponent<Renderer>();
         basePosition = transform.localPosition;
     }
 
     public void OnPointerDown(PointerEventData eventData)
     {
-        if (panel != null && panel.Press(action)) Feedback();
+        if (onPress != null && onPress()) Feedback();
     }
 
     public void Feedback()
@@ -50,35 +50,44 @@ public class PanelButton : MonoBehaviour, IPointerDownHandler
         running = StartCoroutine(Flash());
     }
 
+    /// <summary>Lets the part glow in this color (black = off). Kept until changed.</summary>
+    public void SetGlow(Color c)
+    {
+        if (c == glow) return;
+        glow = c;
+        Apply();
+    }
+
     IEnumerator Flash()
     {
-        SetPressed(true);
+        pressed = true;
+        Apply();
         yield return new WaitForSeconds(feedbackTime);
-        SetPressed(false);
+        pressed = false;
+        Apply();
         running = null;
     }
 
-    void SetPressed(bool pressed)
+    void Apply()
     {
-        if (graphic != null)
-        {
-            transform.localScale = pressed ? baseScale * 0.9f : baseScale;
-            graphic.color = pressed ? baseColor * pressDarkening : baseColor;
-            return;
-        }
         Vector3 offset = transform.parent != null ? transform.parent.InverseTransformVector(pressOffset) : pressOffset;
         transform.localPosition = pressed ? basePosition + offset : basePosition;
         if (rend == null) return;
         block ??= new MaterialPropertyBlock();
-        //per material slot, so e.g. a differently colored arrow glyph keeps its own color (just darker)
+        //per material slot, so e.g. a differently colored glyph keeps its own color (just darker)
         Material[] mats = rend.sharedMaterials;
         for (int i = 0; i < mats.Length; i++)
         {
             block.Clear();
-            if (pressed && mats[i] != null)
+            Material m = mats[i];
+            if (m != null)
             {
-                if (mats[i].HasProperty(BaseColorId)) block.SetColor(BaseColorId, mats[i].GetColor(BaseColorId) * pressDarkening);
-                else if (mats[i].HasProperty(ColorId)) block.SetColor(ColorId, mats[i].GetColor(ColorId) * pressDarkening);
+                if (pressed)
+                {
+                    if (m.HasProperty(BaseColorId)) block.SetColor(BaseColorId, m.GetColor(BaseColorId) * pressDarkening);
+                    else if (m.HasProperty(ColorId)) block.SetColor(ColorId, m.GetColor(ColorId) * pressDarkening);
+                }
+                if (m.HasProperty(EmissionId)) block.SetColor(EmissionId, glow);
             }
             rend.SetPropertyBlock(block, i);
         }

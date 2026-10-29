@@ -1,0 +1,56 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 739294eda98044c0abbae5df24b8b967, type: 3}
+  m_Name: PanelConfig_Default
+  m_EditorClassIdentifier: Assembly-CSharp::PanelConfig
+  effectButtons: 4
+  trials: 10
+  maxSelected: 2
+  trialSeconds: 15
+  instructions: 'WELCOME TO THE LAB
+
+
+    THE BUTTONS 1-{buttons} SWITCH ON CERTAIN
+    EFFECTS. YOU CAN SWITCH ON UP TO {max} AT ONCE.
+
+
+    CLOSE THE SHUTTER TO LOG
+    IN YOUR CHOICE, THEN PRESS START. A NEW CULTURE GROWS FOR EVERY TRIAL.
+
+
+    DURING
+    A TRIAL, TURN THE CAMERA WITH THE ARROWS.
+
+
+    YOU HAVE A TOTAL OF {trials}
+    TRIALS. PRESS ? TO READ THIS AGAIN.'
+  offline: 'CAMERA OFFLINE
+
+
+    SELECT UP TO {max} BUTTONS,
+
+    CLOSE THE SHUTTER,
+    PRESS START.'
+  ready: 'CAMERA OFFLINE
+
+
+    CHOICE LOGGED IN.
+
+    PRESS START.'
+  notAccessible: 'CAMERA NOT ACCESSIBLE
+
+
+    TRIAL HAS NOT STARTED.'
+  finished: 'LAB COMPLETE
+
+
+    ALL {trials} TRIALS DONE.'
