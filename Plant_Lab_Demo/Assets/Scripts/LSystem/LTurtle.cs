@@ -16,8 +16,11 @@ using System.Collections.Generic;
 ///           the turtle then moves to the segment's tip (where a flower sits), so S S stacks segments
 ///   ~       to the surface ('@' is taken: it starts a rule's weight): from the current segment's center along H to
 ///           the nearest free areole (tuft), which the child replaces; the turtle stands there, heading out of the
-///           surface. Turns before it choose the spot, roll first: /(b) &amp;(a) ~ = b degrees around the axis, then
-///           a degrees away from the tip (after a pitch, a roll would only spin the turtle). No segment so far: ignored.
+///           surface, turned like the segment: it keeps the segment's U or L, whichever is more perpendicular to the
+///           surface there (a paddle's child from its edge lies in the paddle's plane, one from its flat side keeps the
+///           paddle's width direction). Turns before it choose the spot, roll first: /(b) &amp;(a) ~ = b degrees
+///           around the axis, then a degrees away from the tip (after a pitch, a roll would only spin the turtle).
+///           Turns after it turn the child, e.g. ~ /(90) S. No segment so far: ignored.
 ///
 /// Coordinates are the notebook's: right-handed, Z up; the turtle starts at the origin with H = +Z.
 /// ToUnity converts them to Unity's (left-handed, Y up) without mirroring the plant.
@@ -149,13 +152,20 @@ public static class LTurtle
                     c.usedAreoles.Add(best);
                     CactusShape.SurfacePoint spot = c.areoles[best];
                     pos = c.position + Local(spot.position, c);
-                    //heading out of the surface; L and U follow (L kept as close as possible, U = H x L as everywhere)
+                    //heading out of the surface, turned like the segment (same as the simulation's areole frame):
+                    //keep U or L, whichever is more perpendicular to the normal
                     V3 n = Normalized(c.L * spot.normal.x + c.H * spot.normal.y + c.U * spot.normal.z);
-                    V3 l = L + n * -V3.Dot(L, n);
-                    if (V3.Dot(l, l) < 1e-8) l = U + n * -V3.Dot(U, n);
                     H = n;
-                    L = Normalized(l);
-                    U = V3.Cross(H, L);
+                    if (Math.Abs(spot.normal.z) <= Math.Abs(spot.normal.x))
+                    {
+                        U = Normalized(c.U + n * -V3.Dot(c.U, n));
+                        L = V3.Cross(U, H);
+                    }
+                    else
+                    {
+                        L = Normalized(c.L + n * -V3.Dot(c.L, n));
+                        U = V3.Cross(H, L);
+                    }
                     break;
                 }
                 default:

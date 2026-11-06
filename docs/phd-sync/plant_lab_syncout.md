@@ -1,5 +1,5 @@
 # Plant_Lab sync-out (written by Claude Code)
-last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-10-26
+last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-02
 
 ## Current state (max ~10 lines, overwritten at each sync out)
 - Unity 6000.5.10f1, URP, WebGL tablet target. One terrarium with one procedural plant (L-system development on the
@@ -9,10 +9,29 @@ last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-10-26
   select (max 2, FIFO) -> shutter -> Start -> camera feed + timer -> camera offline -> next LED row.
 - Not built yet: plant responses to the buttons (effects layer, hidden state), lab template with several specimens,
   logging, agent interface. Classic plant development still switchable (to be removed).
-- Cactus: segment shape (ball + optional tip-grown column) and rule symbols S(s), ~, rand() with preview done.
-  Next: segment body in the simulation (growth, development, collisions, withering) -> preset beside the tree.
+- Cactus: segments in the plant simulation (growth, children at areoles after X % size, flowers, glass/segment
+  contacts with slight tilt, deflating wither), grows in the editor; growth now drawn smoothly. Preset
+  Paddle_Cactus_Plant (rules allow max 9 segments). Tufts: Blender model with several materials (spikes + fuzz). Open: segments stop for good within the 2.5 mm clearance gap
+  (push along their axis, tilt can't free them), so their rules never run. Then step 4, between-plant collision later.
 
 ## New entries, not yet transferred (newest first, 2 to 4 lines each)
+- 2026-11-06: Tufts support models with several materials (Laura's spikes.fbx: fuzz icosphere with a transparent Shader
+  Graph "Tuft" + cones "Spikes", joined in Blender). CactusSegmentSettings.TuftParts/TuftMaterials + TuftBuilder (one
+  submesh per part); used by CactusVisuals, CactusSegmentPreview, LSystemPreview. Pitfalls: model imports 15 cm tall
+  (x tuftScale 2.79 = 42 cm tufts; rescale to 1-2 cm); spikes.fbx needs Read/Write on for the WebGL build.
+- 2026-11-05: Cactus stutter fixed (cause: CactusShape.BuildMesh took 8-10 ms per segment, 5 surface evaluations per
+  vertex, so meshes updated only every 1 % growth). Now normals from the grid + reused buffers (~2 ms, normals within
+  0.4 deg mean), and between rebuilds CactusVisuals stretches the old mesh to the current state (StretchBetween).
+  Found in the batch scene run: 3 of 8 segments stuck at growth ~0.4 by contacts within the clearance gap (fix proposed).
+
+## Already transferred to the claude.ai log (reference only, do not add here)
+- 2026-10-30: Previews (LSystemPreview, CactusSegmentPreview) hide themselves in Play mode by default (hideInPlayMode);
+  LSystemPreview has a cactus "Outline" look (coarse wire mesh gizmo). Pitfall: in SampleScene, Demo_Cactus (with its
+  segment preview), Lsystem_Preview_Cactus and Demo_Tree all sit at the origin, so the growing cactus was covered.
+- 2026-10-29: Cactus step 3 built (segments in PlantSimulation, tested in a batch-mode copy of the project, not yet in the
+  editor): S in a branch program hands the rest to the segment; its rules run at segmentChildThreshold, children appear
+  when their areole exists (segmentChildInterval apart). Contacts: tilt at the joint (max segmentMaxTiltDeg), else growth
+  stops. Change: after ~ the child faces like its parent (paddle children from the edge lie in its plane), also in preview.
 - 2026-10-29: Cactus step 2 built (compiles, turtle tested outside Unity): segment type as asset (CactusSegmentSettings),
   rule symbols S(s) (segment, turtle to its tip) and ~ (to the nearest free areole; '@' was impossible: it starts a
   rule's weight), rand(a, b) in expressions (seeded per module). LSystemPreview shows segments as meshes. Pitfall:
@@ -32,9 +51,6 @@ last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-10-26
   tip dip) growing outward from their attachment point; tufts on the rib ridges (Laura's Blender model) pointing base
   to tip; flowers only at segment tips; withering = deflating toward a thin core; slight flexibility on contact.
   Step 1 built: CactusShape (shape math + mesh) and CactusSegmentPreview (tune one segment in the scene).
-- (none yet)
-
-## Already transferred to the claude.ai log (reference only, do not add here)
 - 2026-10-26: Panel + trial workflow built (untested in Unity): PanelBuilder (panel from config + layout, any number of
   buttons/trials), TrialController (states Selecting/Ready/Running/Finished, LED history, world reset per trial, screen
   texts in a built-in pixel font, static between trials), menu "Botanic Lab > Build Trial Panel". Old per-tick console

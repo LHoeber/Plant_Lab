@@ -26,6 +26,8 @@ public class CactusSegmentPreview : MonoBehaviour
 
     [Header("Gizmos")]
     public bool showAxis = true;
+    [Tooltip("Hide the segment in Play mode, so it doesn't cover a plant growing at the same place.")]
+    public bool hideInPlayMode = true;
 
     [Header("Own values (used without a Segment asset)")]
     public CactusShape shape = new CactusShape();
@@ -39,6 +41,7 @@ public class CactusSegmentPreview : MonoBehaviour
     [Range(0f, 180f)] public float tuftRandomTurn = 180f;
 
     Mesh bodyMesh, tuftMesh;
+    readonly CactusSegmentSettings.TuftBuilder tufts = new CactusSegmentSettings.TuftBuilder();
     MeshFilter bodyFilter, tuftFilter;
     MeshRenderer bodyRenderer, tuftRenderer;
     CactusSegmentSettings ownValues;//a temporary asset holding the fields above (the same code then builds both cases)
@@ -66,9 +69,10 @@ public class CactusSegmentPreview : MonoBehaviour
     void Update()
     {
         if (segment != null && segment.Version != segmentVersion) { segmentVersion = segment.Version; dirty = true; }
-        if (!dirty) return;
-        dirty = false;
-        Rebuild();
+        if (dirty) { dirty = false; Rebuild(); }
+        bool show = !(hideInPlayMode && Application.isPlaying);
+        if (bodyRenderer != null) bodyRenderer.enabled = show;
+        if (tuftRenderer != null) tuftRenderer.enabled = show;
     }
 
     void Rebuild()
@@ -85,13 +89,11 @@ public class CactusSegmentPreview : MonoBehaviour
         bodyRenderer.sharedMaterial = s.BodyMaterial;
 
         //tufts: one combined mesh (hundreds of separate objects would be slow)
-        var parts = new List<CombineInstance>();
-        s.AddTufts(parts, s.shape.Areoles(seed, growth, wither), Matrix4x4.identity, seed);
-        tuftMesh.Clear();
-        tuftMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
-        if (parts.Count > 0) tuftMesh.CombineMeshes(parts.ToArray(), true, true);
+        tufts.Clear();
+        s.AddTufts(tufts, s.shape.Areoles(seed, growth, wither), Matrix4x4.identity, seed, null, s.shape.BallScale(growth));
+        tufts.Build(tuftMesh);
         tuftFilter.sharedMesh = tuftMesh;
-        tuftRenderer.sharedMaterial = s.TuftSource().material;
+        tuftRenderer.sharedMaterials = s.TuftMaterials();
     }
 
     void OnDrawGizmos()
@@ -105,7 +107,7 @@ public class CactusSegmentPreview : MonoBehaviour
 
     void OnDrawGizmosSelected()
     {
-        if (!showAxis) return;
+        if (!showAxis || (hideInPlayMode && Application.isPlaying)) return;
         Gizmos.matrix = transform.localToWorldMatrix;
         Vector3 tip = (segment != null ? segment.shape : shape).Tip(growth, wither);
         Gizmos.color = Color.yellow;
@@ -137,6 +139,7 @@ public class CactusSegmentPreview : MonoBehaviour
     void OnDestroy()
     {
         DestroySafe(bodyMesh); DestroySafe(tuftMesh); DestroySafe(ownValues);
+        tufts.Release();
         if (bodyFilter != null) DestroySafe(bodyFilter.gameObject);
         if (tuftFilter != null) DestroySafe(tuftFilter.gameObject);
     }

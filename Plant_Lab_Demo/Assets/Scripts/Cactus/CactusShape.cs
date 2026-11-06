@@ -5,7 +5,7 @@ using UnityEngine;
 /// <summary>
 /// Shape of one cactus segment: a ribbed 3D ellipsoid (width x height x depth, "the ball") that grows outward from its
 /// attachment point, optionally stretched into a column by tip growth. Plain math and mesh building, used by the tuning
-/// component (CactusSegmentPreview) and later by the plant body.
+/// component (CactusSegmentPreview), the L-system preview and the plant simulation.
 ///
 /// Segment space: the attachment point (base) is at the origin, the axis runs along +y to the tip (the point farthest from
 /// the attachment, where a flower sits). Surface points are given by (angle around the axis, v): v = 0 at the base,
@@ -82,8 +82,11 @@ public class CactusShape
              "Only visible when the segment is withering (Wither above 0).")]
     [Range(0.1f, 1f)] public float witheredCore = 0.35f;
 
-    /// <summary>A position on the surface with its outward normal, in segment space.</summary>
-    public struct SurfacePoint { public Vector3 position, normal; public float angle, v; }
+    /// <summary>
+    /// A position on the surface with its outward normal, in segment space. For areoles also their id: the rib and the
+    /// number along it (stays the same while a column grows and new areoles appear).
+    /// </summary>
+    public struct SurfacePoint { public Vector3 position, normal; public float angle, v; public int rib, index; }
 
     /// <summary>
     /// The segment at one growth state: scale = size of the ball (0..1, everything is scaled by it),
@@ -215,6 +218,8 @@ public class CactusShape
     /// <summary>
     /// Builds (or rebuilds into `mesh`) the segment's surface: rings from base to tip (for the ball; a column gets more at
     /// the same spacing), columns around the axis.
+    /// Normals come from the neighbouring grid points (one surface evaluation per vertex instead of five), and the
+    /// buffers are reused; triangles and texture coordinates are only set again when the grid size changed.
     /// </summary>
     public Mesh BuildMesh(Mesh mesh, int rings, int columns, float growth = 1f, float wither = 0f)
     {
@@ -222,42 +227,75 @@ public class CactusShape
         rings = Mathf.Max(3, Mathf.CeilToInt(Mathf.Max(3, rings) * st.Length / Mathf.PI));
         columns = Mathf.Max(3, columns);
         int w = columns + 1;//the first column again at the end, so the texture wraps without a seam in the coordinates
-        var verts = new Vector3[(rings + 1) * w];
-        var normals = new Vector3[verts.Length];
-        var uv = new Vector2[verts.Length];
+        int count = (rings + 1) * w;
+        meshVerts ??= new List<Vector3>();
+        meshNormals ??= new List<Vector3>();
+        meshVerts.Clear();
+        meshNormals.Clear();
+
+        //positions: one ring after the other (index i * w + j)
         for (int i = 0; i <= rings; i++)
         {
-            float v = i / (float)rings;
-            float p = v * st.Length;
+            float p = i / (float)rings * st.Length;
+            for (int j = 0; j <= columns; j++)
+                meshVerts.Add(j == columns ? meshVerts[i * w] : Point(2f * Mathf.PI * j / columns, p, st, wither));
+        }
+        //normals: across the slopes to the neighbours along the outline (p) and around the axis (angle).
+        //The ends of the outline lie on the axis: straight down at the base, straight up at the tip
+        for (int i = 0; i <= rings; i++)
+        {
             for (int j = 0; j <= columns; j++)
             {
-                float angle = 2f * Mathf.PI * j / columns;
-                int k = i * w + j;
-                verts[k] = Point(angle, p, st, wither);
-                normals[k] = Normal(angle, p, st, wither);
-                uv[k] = new Vector2(j / (float)columns, v);
+                if (i == 0) { meshNormals.Add(Vector3.down); continue; }
+                if (i == rings) { meshNormals.Add(Vector3.up); continue; }
+                int jj = j == columns ? 0 : j;
+                int left = jj == 0 ? columns - 1 : jj - 1, right = jj + 1;//column `columns` is column 0 again
+                Vector3 dp = meshVerts[(i + 1) * w + jj] - meshVerts[(i - 1) * w + jj];
+                Vector3 da = meshVerts[i * w + right] - meshVerts[i * w + left];
+                Vector3 n = Vector3.Cross(dp, da);
+                //own normalization: Unity's .normalized returns (0,0,0) below length 1e-5, which the shader turns into NaN
+                float len = n.magnitude;
+                meshNormals.Add(len > 1e-12f ? n / len : (i * 2 < rings ? Vector3.down : Vector3.up));
             }
         }
-        var tris = new int[rings * columns * 6];
-        int n = 0;
-        for (int i = 0; i < rings; i++)
-            for (int j = 0; j < columns; j++)
-            {
-                int a = i * w + j, b = (i + 1) * w + j, c = (i + 1) * w + j + 1, d = i * w + j + 1;
-                //clockwise seen from outside (Unity's front faces)
-                tris[n++] = a; tris[n++] = b; tris[n++] = c;
-                tris[n++] = a; tris[n++] = c; tris[n++] = d;
-            }
+
         if (mesh == null) mesh = new Mesh { name = "Cactus segment" };
-        mesh.Clear();
-        mesh.indexFormat = verts.Length > 65000 ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16;
-        mesh.vertices = verts;
-        mesh.normals = normals;
-        mesh.uv = uv;
-        mesh.triangles = tris;
+        int indexCount = rings * columns * 6;
+        bool sameGrid = mesh.vertexCount == count && mesh.subMeshCount == 1 && mesh.GetIndexCount(0) == indexCount;
+        if (!sameGrid)
+        {
+            mesh.Clear();
+            mesh.indexFormat = count > 65000 ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16;
+        }
+        mesh.SetVertices(meshVerts);
+        mesh.SetNormals(meshNormals);
+        if (!sameGrid)
+        {
+            meshUV ??= new List<Vector2>();
+            meshTris ??= new List<int>();
+            meshUV.Clear();
+            meshTris.Clear();
+            for (int i = 0; i <= rings; i++)
+                for (int j = 0; j <= columns; j++) meshUV.Add(new Vector2(j / (float)columns, i / (float)rings));
+            for (int i = 0; i < rings; i++)
+                for (int j = 0; j < columns; j++)
+                {
+                    int a = i * w + j, b = (i + 1) * w + j, c = (i + 1) * w + j + 1, d = i * w + j + 1;
+                    //clockwise seen from outside (Unity's front faces)
+                    meshTris.Add(a); meshTris.Add(b); meshTris.Add(c);
+                    meshTris.Add(a); meshTris.Add(c); meshTris.Add(d);
+                }
+            mesh.SetUVs(0, meshUV);
+            mesh.SetTriangles(meshTris, 0, false);
+        }
         mesh.RecalculateBounds();
         return mesh;
     }
+
+    //reused by BuildMesh (not saved with the settings)
+    [NonSerialized] List<Vector3> meshVerts, meshNormals;
+    [NonSerialized] List<Vector2> meshUV;
+    [NonSerialized] List<int> meshTris;
 
     /// <summary>
     /// Where the tufts sit: on every rib ridge, evenly spaced from areoleStart (every other rib shifted by half a step if
@@ -269,28 +307,70 @@ public class CactusShape
         var result = new List<SurfacePoint>();
         if (ribs <= 0 || areolesPerRib <= 0) return result;
         State st = StateAt(growth);
-        float step = AreoleStep;
         for (int r = 0; r < ribs; r++)
         {
             int count = AreoleCount(r, st);
-            for (int m = 0; m < count; m++)
-            {
-                //jitter from a hash of (seed, rib, tuft): a tuft keeps its jitter when new ones appear
-                float jitter = (Hash01(seed, r, m) * 2f - 1f) * areoleJitter * step;
-                float p = Mathf.Clamp(AreoleP(r, m) + jitter, 0.01f, st.Length - 0.01f);
-                //on the ridge: where the rib wave is at its top, following the twist
-                float angle = (2f * Mathf.PI * r) / ribs - twistDeg * Mathf.Deg2Rad * p / Mathf.PI;
-                result.Add(new SurfacePoint
-                {
-                    angle = angle, v = p / st.Length,
-                    position = Point(angle, p, st, wither), normal = Normal(angle, p, st, wither),
-                });
-            }
+            for (int m = 0; m < count; m++) result.Add(AreolePoint(seed, r, m, st, wither));
         }
         return result;
     }
 
-    static float Hash01(int seed, int a, int b)
+    /// <summary>One areole by its id (rib, number along the rib), at a growth state.</summary>
+    public SurfacePoint Areole(int seed, int rib, int index, float growth = 1f, float wither = 0f) =>
+        AreolePoint(seed, rib, index, StateAt(growth), wither);
+
+    /// <summary>Does this areole exist yet at this growth state? (On a growing column, the upper ones appear over time.)</summary>
+    public bool AreoleExists(int rib, int index, float growth) =>
+        rib >= 0 && rib < ribs && index >= 0 && index < AreoleCount(rib, StateAt(growth));
+
+    SurfacePoint AreolePoint(int seed, int r, int m, State st, float wither)
+    {
+        //jitter from a hash of (seed, rib, tuft): a tuft keeps its jitter when new ones appear
+        float jitter = (Hash01(seed, r, m) * 2f - 1f) * areoleJitter * AreoleStep;
+        float p = Mathf.Clamp(AreoleP(r, m) + jitter, 0.01f, st.Length - 0.01f);
+        //on the ridge: where the rib wave is at its top, following the twist
+        float angle = (2f * Mathf.PI * r) / ribs - twistDeg * Mathf.Deg2Rad * p / Mathf.PI;
+        return new SurfacePoint
+        {
+            angle = angle, v = p / st.Length, rib = r, index = m,
+            position = Point(angle, p, st, wither), normal = Normal(angle, p, st, wither),
+        };
+    }
+
+    /// <summary>
+    /// How much a mesh built at (fromGrowth, fromWither) has to be stretched to look roughly like the state
+    /// (toGrowth, toWither): x = across the axis (x and z), y = along it. Cheap stand-in between two mesh rebuilds.
+    /// </summary>
+    public Vector2 StretchBetween(float fromGrowth, float fromWither, float toGrowth, float toWither)
+    {
+        float across = StateAt(toGrowth).scale * Mathf.Lerp(1f, witheredCore, toWither)
+                       / Mathf.Max(1e-6f, StateAt(fromGrowth).scale * Mathf.Lerp(1f, witheredCore, fromWither));
+        float along = Tip(toGrowth, toWither).y / Mathf.Max(1e-6f, Tip(fromGrowth, fromWither).y);
+        return new Vector2(across, along);
+    }
+
+    /// <summary>Size of the ball at a growth state (0..1; 1 = full size), e.g. for scaling the tufts with it.</summary>
+    public float BallScale(float growth) => StateAt(growth).scale;
+
+    /// <summary>
+    /// Rough body for collisions (meters, at size factor 1): half width a, half depth c and half height b of the ball,
+    /// and the column's length, at a growth and wither state. Ribs and hills are included as a slightly larger radius.
+    /// The body is: lower half ellipsoid (0..b), column (b..b + column), upper half ellipsoid (up to 2b + column).
+    /// </summary>
+    public void BodyExtents(float growth, float wither, out float a, out float b, out float c, out float column)
+    {
+        State st = StateAt(growth);
+        float bulge = ribs > 0 ? 1f + (Mathf.Max(0f, ribDepth) + 0.5f * hillHeight) * (1f + 1.5f * wither) : 1f;
+        float radial = st.scale * bulge * Mathf.Lerp(1f, witheredCore, wither);
+        float axial = st.scale * Mathf.Lerp(1f, 0.92f, wither);
+        a = 0.5f * width * radial;
+        c = 0.5f * depth * radial;
+        b = 0.5f * height * axial;
+        column = st.column * b;
+    }
+
+    /// <summary>A number in [0, 1) from three integers (same inputs, same number).</summary>
+    public static float Hash01(int seed, int a, int b)
     {
         unchecked
         {

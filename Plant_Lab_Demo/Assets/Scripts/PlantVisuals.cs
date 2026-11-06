@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Turns the simulation into what you see: one mesh for all branches, one GameObject per leaf and per flower.
+/// Turns the simulation into what you see: one mesh for all branches, one GameObject per leaf, flower and cactus segment.
 /// Reads the simulation, never changes it. Once the simulation says a leaf/flower has fully withered,
 /// it's handed over to Unity's physics and falls (not deterministic, on purpose).
 /// </summary>
@@ -13,6 +13,7 @@ public class PlantVisuals
     readonly MeshRenderer stemRenderer;
     readonly List<OrganVisual> leafVisuals = new List<OrganVisual>();   //same order as PlantSimulation.Leaves (null = no prefab)
     readonly List<OrganVisual> flowerVisuals = new List<OrganVisual>(); //same order as PlantSimulation.Flowers (null = no prefab)
+    readonly CactusVisuals cactus;                             //cactus segments (one object each)
 
     //buffers, reused every rebuild to avoid newly allocating memory every frame
     readonly List<Vector3> pts = new List<Vector3>();//center line of one branch
@@ -30,6 +31,7 @@ public class PlantVisuals
     public PlantVisuals(Transform root, MeshFilter meshFilter, MeshRenderer meshRenderer)
     {
         this.root = root;
+        cactus = new CactusVisuals(root);
         stemRenderer = meshRenderer;
         mesh = new Mesh { name = "Plant" };
         mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;//allows more vertices than Int16 if needed
@@ -44,8 +46,12 @@ public class PlantVisuals
         leafVisuals.Clear();
         foreach (var v in flowerVisuals) v?.Destroy();
         flowerVisuals.Clear();
+        cactus.Clear();
         mesh.Clear();
     }
+
+    /// <summary>Places the cactus segments and rebuilds the meshes of those that grew or withered visibly.</summary>
+    public void UpdateCactus(PlantSimulation sim) => cactus.Update(sim);
 
     public void RebuildMesh(PlantSimulation sim)
     {
@@ -205,6 +211,18 @@ public class PlantVisuals
             //the same pose the collision check uses (drawn at the flower's actual size via its transform)
             if (c != null) DrawBoxes(c.BoxesFor(sim.FlowerGrowth(fl), sim.FruitProgress(fl), sim.FlowerWither(fl), out _), v.t);
         }
+        //cactus segments: the boxes used against obstacles
+        Gizmos.color = new Color(0.5f, 1f, 0.3f, 0.8f);
+        var boxes = new List<(Vector3 center, Vector3 half)>();
+        foreach (CactusSegment seg in sim.CactusSegments)
+        {
+            sim.SegmentBoxes(seg, boxes);
+            foreach (var (center, half) in boxes)
+            {
+                Gizmos.matrix = root.localToWorldMatrix * Matrix4x4.TRS(center, seg.rotation, Vector3.one);
+                Gizmos.DrawWireCube(Vector3.zero, 2f * half);
+            }
+        }
         Gizmos.matrix = Matrix4x4.identity;
     }
 
@@ -231,6 +249,7 @@ public class PlantVisuals
     public void Dispose()
     {
         if (mesh != null) Object.Destroy(mesh);
+        cactus.Clear();
     }
 
     /// <summary>

@@ -257,6 +257,7 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
         if (meshDirty) { visuals.RebuildMesh(sim); meshDirty = false; }//updating how everything looks like after all the steps taken
         visuals.UpdateLeaves(sim);//cheap, so done every frame: leaf sizes and positions follow sliders immediately
         visuals.UpdateFlowers(sim);
+        visuals.UpdateCactus(sim);
     }
 
     void OnDestroy()

@@ -119,6 +119,16 @@ public class PlantSettings : ScriptableObject
     [LSystemOnly]public string flowerSymbols = "K";
     [Tooltip("Cactus segment type for S(s) and ~ in the rules (a Cactus Segment asset). Empty: no cactus segments.")]
     [LSystemOnly][NoRandomize] public CactusSegmentSettings cactusSegment;
+    [Tooltip("Cactus: sim seconds a segment takes from bud to full size (whatever its size factor).")]
+    [LSystemOnly][Range(1f, 120f)] public float segmentGrowDuration = 20f;
+    [Tooltip("Cactus: growth (0..1) a segment must reach before what follows its S in the rules happens: its children " +
+             "are planned and its flower buds appear. A child also waits until its areole exists (on a growing column).")]
+    [LSystemOnly][Range(0f, 1f)] public float segmentChildThreshold = 0.7f;
+    [Tooltip("Cactus: sim seconds between the children of one segment (they appear one after another, in rule order).")]
+    [LSystemOnly][Range(0f, 30f)] public float segmentChildInterval = 3f;
+    [Tooltip("Cactus: a segment touching the glass or an older segment first tilts at its attachment (then its parent " +
+             "does), by up to this angle (degrees) each; what's left stops its growth until it's free again.")]
+    [LSystemOnly][NoRandomize][Range(0f, 45f)] public float segmentMaxTiltDeg = 10f;
 
     [Header("Growth")]
     [Tooltip("How fast branch tips grow, units per sim second (all branches). Changes the plant's proportions: " +
@@ -230,7 +240,7 @@ public class PlantSettings : ScriptableObject
     [Range(1f, 60f)] public float fruitDevelopDuration = 6f;
 
     [Header("Limits (safety: nothing more of that kind appears once reached)")]
-    [Tooltip("At most this many branches (main stem included). Branch counts multiply with every branching level.")]
+    [Tooltip("At most this many branches (main stem included), and at most this many cactus segments. Counts multiply with every branching level.")]
     [NoRandomize][Range(10, 1000)] public int maxBranches = 200;
     [Tooltip("At most this many leaves. Every leaf is an object checked against obstacles every step: thousands make Unity slow.")]
     [NoRandomize][Range(50, 5000)] public int maxLeaves = 1500;

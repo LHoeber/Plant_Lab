@@ -6,12 +6,16 @@ using UnityEngine;
 /// Debug view for L-system rules: derives the rules (instantly, discrete steps like the notebook) and draws the
 /// result as lines (segments) and dots (all other symbols, e.g. tips and organs) at this object's position.
 /// Drawn with Gizmos: visible in the Scene view, and in the Game view when its Gizmos button is on.
-/// With a cactus segment type, S(s) and ~ build segments, shown as real meshes (with tufts) in a generated child object.
-/// Changes in the Inspector are shown immediately, also outside Play mode.
+/// With a cactus segment type, S(s) and ~ build segments, shown as real meshes (with tufts) in a generated child object,
+/// or only as their outline (a wire mesh gizmo, Scene view only).
+/// Changes in the Inspector are shown immediately, also outside Play mode. In Play mode it hides itself (by default),
+/// so it doesn't cover a plant growing at the same place.
 /// </summary>
 [ExecuteAlways]
 public class LSystemPreview : MonoBehaviour
 {
+    public enum CactusLook { Solid, Outline }
+
     [Serializable]
     public class MarkStyle
     {
@@ -45,6 +49,13 @@ public class LSystemPreview : MonoBehaviour
     [Header("Cactus")]
     [Tooltip("Segment type for S(s) and ~ (with plant settings assigned: theirs). Empty: S is drawn as a dot.")]
     public CactusSegmentSettings cactusSegment;
+    [Tooltip("Solid: segments as real meshes with tufts. Outline: only a coarse wire mesh (Scene view, like the lines), " +
+             "so a plant growing at the same place stays visible.")]
+    public CactusLook cactusLook = CactusLook.Solid;
+    public Color outlineColor = new Color(0.5f, 1f, 0.4f, 0.6f);
+
+    [Tooltip("Hide the whole preview (lines, dots, segments) in Play mode, so it doesn't cover the growing plant.")]
+    public bool hideInPlayMode = true;
 
     [Header("Derivation")]
     [Range(0, 40)] public int steps = 30;
@@ -86,7 +97,11 @@ public class LSystemPreview : MonoBehaviour
     CactusSegmentSettings shownSegment;
     int segmentVersion = -1;
     [NonSerialized] bool meshDirty;
-    Mesh segmentMesh, bodyMesh, tuftMesh;
+    Mesh segmentMesh, bodyMesh, tuftMesh, outlineSegment, outlineMesh;
+    readonly CactusSegmentSettings.TuftBuilder tufts = new CactusSegmentSettings.TuftBuilder();
+
+    bool Hidden => hideInPlayMode && Application.isPlaying;
+    bool ShowSolid => cactusLook == CactusLook.Solid && !Hidden;
     MeshFilter bodyFilter, tuftFilter;
     MeshRenderer bodyRenderer, tuftRenderer;
 
@@ -154,6 +169,8 @@ public class LSystemPreview : MonoBehaviour
     {
         Refresh();
         if (meshDirty) BuildCactus();
+        if (bodyRenderer != null) bodyRenderer.enabled = ShowSolid;
+        if (tuftRenderer != null) tuftRenderer.enabled = ShowSolid;
     }
 
     /// <summary>The cactus segments as two combined meshes (bodies, tufts) in generated child objects.</summary>
@@ -166,8 +183,12 @@ public class LSystemPreview : MonoBehaviour
         if (tuftFilter == null) (tuftFilter, tuftRenderer) = CactusSegmentSettings.GeneratedChild(transform, "Cactus tufts (generated)");
         segmentMesh = shownSegment.shape.BuildMesh(segmentMesh, shownSegment.rings, shownSegment.columns);
         segmentMesh.hideFlags = HideFlags.DontSave;
+        //outline: a coarse version of the same shape (a full-resolution wire mesh would be nearly solid)
+        outlineSegment = shownSegment.shape.BuildMesh(outlineSegment, 10, Mathf.Max(16, 4 * shownSegment.shape.ribs));
+        outlineSegment.hideFlags = HideFlags.DontSave;
         var bodies = new List<CombineInstance>();
-        var tufts = new List<CombineInstance>();
+        var outlines = new List<CombineInstance>();
+        tufts.Clear();
         foreach (LTurtle.CactusSegment c in geometry.CactusSegments)
         {
             //segment space -> this object: base at the turtle's position, x = L, y = H (axis), z = U, scaled by the size
@@ -175,15 +196,18 @@ public class LSystemPreview : MonoBehaviour
                                         Quaternion.LookRotation(LTurtle.ToUnity(c.U), LTurtle.ToUnity(c.H)),
                                         Vector3.one * (float)c.size);
             bodies.Add(new CombineInstance { mesh = segmentMesh, transform = m });
+            outlines.Add(new CombineInstance { mesh = outlineSegment, transform = m });
             shownSegment.AddTufts(tufts, c.areoles, m, c.seed, c.usedAreoles);
         }
         bodyMesh = Combine(bodyMesh, bodies, "Cactus preview segments");
-        tuftMesh = Combine(tuftMesh, tufts, "Cactus preview tufts");
+        if (tuftMesh == null) tuftMesh = new Mesh { name = "Cactus preview tufts", hideFlags = HideFlags.DontSave };
+        tufts.Build(tuftMesh);
+        outlineMesh = Combine(outlineMesh, outlines, "Cactus preview outline");
         bodyFilter.sharedMesh = bodyMesh;
         bodyRenderer.sharedMaterial = shownSegment.BodyMaterial;
-        bodyRenderer.enabled = tuftRenderer.enabled = true;
+        bodyRenderer.enabled = tuftRenderer.enabled = ShowSolid;
         tuftFilter.sharedMesh = tuftMesh;
-        tuftRenderer.sharedMaterial = shownSegment.TuftSource().material;
+        tuftRenderer.sharedMaterials = shownSegment.TuftMaterials();
     }
 
     static Mesh Combine(Mesh mesh, List<CombineInstance> parts, string name)
@@ -197,6 +221,7 @@ public class LSystemPreview : MonoBehaviour
 
     void RemoveCactus()
     {
+        if (outlineMesh != null) outlineMesh.Clear();
         if (bodyFilter != null) DestroySafe(bodyFilter.gameObject);
         if (tuftFilter != null) DestroySafe(tuftFilter.gameObject);
         bodyFilter = tuftFilter = null;
@@ -214,7 +239,8 @@ public class LSystemPreview : MonoBehaviour
 
     void OnDestroy()
     {
-        DestroySafe(segmentMesh); DestroySafe(bodyMesh); DestroySafe(tuftMesh);
+        DestroySafe(segmentMesh); DestroySafe(bodyMesh); DestroySafe(tuftMesh); DestroySafe(outlineSegment); DestroySafe(outlineMesh);
+        tufts.Release();
     }
 
     static void DestroySafe(UnityEngine.Object o)
@@ -231,7 +257,13 @@ public class LSystemPreview : MonoBehaviour
         //itself outside Play mode, so ask for one to rebuild the meshes
         if (meshDirty && !Application.isPlaying) UnityEditor.EditorApplication.QueuePlayerLoopUpdate();
 #endif
-        if (geometry == null) return;
+        if (geometry == null || Hidden) return;
+        if (cactusLook == CactusLook.Outline && outlineMesh != null && outlineMesh.vertexCount > 0)
+        {
+            Gizmos.matrix = transform.localToWorldMatrix;
+            Gizmos.color = outlineColor;
+            Gizmos.DrawWireMesh(outlineMesh);
+        }
         Gizmos.matrix = transform.localToWorldMatrix * Matrix4x4.Scale(Vector3.one * drawScale);
         for (int i = 0; i < linesByColor.Length; i++)
         {

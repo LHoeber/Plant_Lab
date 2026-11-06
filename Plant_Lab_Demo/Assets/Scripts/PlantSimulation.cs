@@ -11,7 +11,7 @@ using UnityEngine;
 /// <summary>Global life phases of a plant, always in this order (Flowering and Fruiting can be skipped).</summary>
 public enum PlantPhase { Growing, Flowering, Fruiting, Withering, Dead }
 
-public class PlantSimulation
+public partial class PlantSimulation//cactus segments: Cactus/PlantSimulationCactus.cs
 {
     public const float GoldenAngleDeg = 137.50776f;// 360 * (1 - 1/phi)
 
@@ -102,11 +102,17 @@ public class PlantSimulation
     {
         SimTime += dt;//leaves keep aging and stems keep thickening even after all tips stopped
         //new tissue is only formed in the Growing phase
-        if (Phase == PlantPhase.Growing) Development.Grow(this, Settings.growthSpeed * dt);
+        if (Phase == PlantPhase.Growing)
+        {
+            Development.Grow(this, Settings.growthSpeed * dt);
+            if (Development is LSystemDevelopment ls) GrowSegments(dt, ls);
+        }
         //positions and radii for the new sim time; creation order = parents before children
         foreach (Branch b in Branches) b.UpdateGeometry(this);
+        UpdateCactusGeometry();
         //anything that now touches an obstacle turns/bends away, before this state is ever drawn
         ResolveContacts(dt);
+        ResolveCactusContacts(dt);
         Development.AfterStep(this);
         UpdatePhase();
         return true;
@@ -126,6 +132,7 @@ public class PlantSimulation
                 if (s.growingEnd != PhaseEnd.Automatic) break;
                 bool allFinished = true;
                 foreach (Branch b in Branches) if (b.finishTime < 0f && !b.stopped) { allFinished = false; break; }
+                foreach (CactusSegment c in CactusSegments) if (!c.Finished) { allFinished = false; break; }
                 if (allFinished || inPhase >= s.growingDuration) EnterNextPhase();
                 break;
             case PlantPhase.Flowering:
@@ -166,7 +173,10 @@ public class PlantSimulation
     {
         //leaving Growing early: unfinished branches stop where they are
         if (Phase == PlantPhase.Growing)
+        {
             foreach (Branch b in Branches) b.StopGrowth(this);
+            StopSegments();
+        }
         Phase = next;
         PhaseStartTime = SimTime;
         if (next == PlantPhase.Flowering) FloweringStartTime = SimTime;
@@ -199,6 +209,7 @@ public class PlantSimulation
         WitherStartTime = SimTime;
         witherMaxDistance = 1e-3f;
         foreach (Branch b in Branches) witherMaxDistance = Mathf.Max(witherMaxDistance, DistanceFromBase(b, b.committedLength));
+        if (CactusSegments.Count > 0) witherMaxDistance = Mathf.Max(witherMaxDistance, SegmentMaxDistance());
         //own stream for the jitter, so withering never shifts any other random decision
         var r = new System.Random(unchecked(Root.seed * 486187739 + 3));
         //always the same draws per organ; an earlier wither start (e.g. flowers without fruit) is kept
@@ -207,7 +218,8 @@ public class PlantSimulation
                 WaveArrival(DistanceFromBase(leaf.branch, leaf.arcPos)) + Mathf.Abs(Gaussian(r)) * s.witherJitter);
         foreach (Flower f in Flowers)
             f.witherStart = Mathf.Min(f.witherStart,
-                WaveArrival(DistanceFromBase(f.branch, f.arcPos)) + Mathf.Abs(Gaussian(r)) * s.witherJitter);
+                WaveArrival(FlowerBaseDistance(f)) + Mathf.Abs(Gaussian(r)) * s.witherJitter);
+        StartSegmentWithering(r);//after the organs: their draws stay the same
     }
 
     /// <summary>Sim time the withering wave reaches a point at the given distance from the base.</summary>
@@ -417,11 +429,15 @@ public class PlantSimulation
 
     // --- flowers ---
 
-    /// <summary>Current position of a flower's base: the end point of its branch (moves when the branch bends).</summary>
-    public Vector3 FlowerPosition(Flower f) => f.branch.PointAt(f.seg, f.offset);
+    /// <summary>Current position of a flower's base: the end point of its branch (moves when the branch bends), or its place on a cactus segment.</summary>
+    public Vector3 FlowerPosition(Flower f) => f.segment != null ? SegmentFlowerPosition(f) : f.branch.PointAt(f.seg, f.offset);
 
     /// <summary>Direction the flower faces now: its branch's last direction, with bends and its own tilt applied.</summary>
-    public Vector3 FlowerDirection(Flower f) => f.branch.RotAt(f.seg + 1) * (f.tilt * f.dir);
+    public Vector3 FlowerDirection(Flower f) =>
+        f.segment != null ? f.segment.rotation * (f.tilt * SegmentFlowerDir(f)) : f.branch.RotAt(f.seg + 1) * (f.tilt * f.dir);
+
+    /// <summary>The frame a flower's tilt is expressed in: its branch's bend there, or its segment's rotation.</summary>
+    Quaternion FlowerBaseRotation(Flower f) => f.segment != null ? f.segment.rotation : f.branch.RotAt(f.seg + 1);
 
     /// <summary>Opening progress of a flower, 0 = bud to 1 = fully open (input for FlowerMorph).</summary>
     public float FlowerGrowth(Flower f)
@@ -549,9 +565,11 @@ public class PlantSimulation
                     if (source == 0 ? !FlowerPush(f, out push, out at)
                                     : !(self && (pass == 0 ? SelfAwake(f) : f.selfTouching) && FlowerSelfPush(f, out push, out at))) continue;
                     any = true;
-                    push = TiltOrgan(ref f.tilt, ref f.tiltUsed, f.branch.RotAt(f.seg + 1), FlowerPosition(f), push, at, s.flowerMaxTiltDeg, organStep);
+                    push = TiltOrgan(ref f.tilt, ref f.tiltUsed, FlowerBaseRotation(f), FlowerPosition(f), push, at, s.flowerMaxTiltDeg, organStep);
                     f.movedThisStep = true;
-                    if (push.sqrMagnitude > 1e-12f) PushBranch(f.branch, f.seg, at, push, nodeStep);
+                    if (push.sqrMagnitude <= 1e-12f) continue;
+                    if (f.segment != null) PushSegment(f.segment, at, push);//the segment it sits on tilts
+                    else PushBranch(f.branch, f.seg, at, push, nodeStep);
                 }
             }
 

@@ -14,17 +14,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CactusSegmentPreview
   shape:
     width: 0.297
-    height: 0.464
-    depth: 0.074
+    height: 0.558
+    depth: 0.071
     columnGrowth: 1
-    columnLength: 0.145
-    ballDone: 0.662
-    columnStart: 0.191
+    columnLength: 0.129
+    ballDone: 0.646
+    columnStart: 0.359
     ribs: 7
     ribDepth: 0.06
     ribSharpness: 1
-    twistDeg: -57
-    tipDip: 0.295
+    twistDeg: -56
+    tipDip: 0.137
     tipDipWidth: 0.998
     baseTaper: 0.797
     areolesPerRib: 4
@@ -32,14 +32,14 @@ MonoBehaviour:
     areoleEnd: 0.93
     staggerAreoles: 1
     areoleJitter: 0.066
-    hillHeight: 0.097
-    hillSharpness: 1
+    hillHeight: 0.092
+    hillSharpness: 1.34
     witheredCore: 0.69
   bodyMaterial: {fileID: 2100000, guid: ed64d7231b2fa4f8084dba0e2df1fe2b, type: 2}
   rings: 49
   columns: 122
-  tuftPrefab: {fileID: 0}
-  tuftScale: 1.56
-  tuftAxisAlignment: 1
+  tuftPrefab: {fileID: 6634240034336680880, guid: 98166cf8ff3b449e4944513ddf5b533d, type: 3}
+  tuftScale: 0.6
+  tuftAxisAlignment: 0
   tuftOffset: 0
   tuftRandomTurn: 180

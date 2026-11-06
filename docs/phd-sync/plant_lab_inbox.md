@@ -1,71 +1,69 @@
 # Plant_Lab inbox (mirror from the claude.ai sync hub)
-Last updated: 2026-10-26 by the "PhD topic context" session. Read-only for Claude Code.
+Last updated: 2026-11-04 by the "PhD topic context" session. Read-only for Claude Code.
 Full design text: Notion "Experimental Prototype 2" -> section "Paradigm Structure".
+Plan until the first TAC meeting (mid-December): project doc claude/15-plan-until-tac.md (claude.ai project).
+
+## New (2026-11-04): air vent + bugs replace fertilizer + weeds
+- Laura's decision (Stage 1 tables, 04.11): the 4th button is now an AIR VENT (not fertilizer). Noisy TV = BUGS:
+  while the vent is on, the bug level (none / few / many) moves one step up or down at random every tick
+  (random walk, p_up = p_down = 0.3 for now); vent off = bugs stay at their current level.
+- Why: weeds that only grow saturate at "many" (the randomness disappears); bugs that come and go keep the
+  outcome unpredictable all trial long, and flying bugs are visible from many views (noisy TV also for viewing).
+- Bugs have no effect on the plants for now (pure noise). A second cause for bugs (e.g. fertilizer) is a later scenario.
+- Laura wants to build the bugs with particles / shaders / flocking. Keep their behaviour a function of the
+  bug level + seed (density per level), so the visual matches the table state.
+- Buttons now: water (moisture up), heat (moisture down; dry soil stalls the seedling), light (bending toward or
+  away, shorter growing phase), vent (bugs). Water and heat cancel when both are on.
+
+## (2026-11-02): what to build next, and what to hold back
+- Priority now on the concept side: Stage 1 tables (hidden variables, effects, observation table, designed
+  noise) for one lab. The tables define the rules of the game; they are written in claude.ai, then handed here.
+- Build now (does not depend on the tables):
+  1. Effects layer that reads its rules from a table/config (effect -> hidden variable, direction, form,
+     delay, probability), so later rule changes are data, not code.
+  2. Per-tick logging: hidden state, visibility per variable and view, action, combination, remaining time, seeds.
+  3. Lab template with several specimens (2 species x 2 to 3 specimens, random placement).
+  4. Background rooms for the labs (free design). Exception: anything inside the terrarium that blocks
+     sight lines (pots, pipes, lamps) changes the observation table, so document it per lab.
+  5. Later: headless / batch data generation (random camera policy, combination as a fixed per-trial input).
+- Hold back: concrete plant responses to specific buttons (wait for the tables), large dataset generation
+  (first a small test set and a readability check of the cues at panel resolution).
+- Determinism: visible changes must be a function of hidden state + seed. Randomness that is not in the
+  tables (e.g. falling leaves with physics) is uncontrolled noise for the model: remove it or make it seeded.
+- Lighting stays constant (controlled factor), except where a button changes it by design.
 
 ## Current paradigm (v3, decided 2026-10-25)
-- Trial loop, all on the control panel (no full-screen view):
-  1. Choose a combination of 4 unlabelled effect buttons (panel layout adaptable by parameter).
-     Selection history as an LED grid (rows = trials, columns = buttons; your decision 25.10).
-     "?" reopens the instructions (only between trials).
-  2. Close a transparent sliding shutter over the selected buttons: locks them (they stay visible)
-     and uncovers the Start button (the open shutter covers Start).
-  3. Start: the camera feed on the panel screen switches on, camera arrows become active.
-     World resets to the same seeded state and the same start view every trial.
-  4. World runs for time T (speed adjustable, intermediate for now). Within a trial only the
-     4 camera arrows (20 degree steps) + idle/no-op. Remaining time shown on the panel.
-  5. After T: "camera offline", shutter opens for the next selection.
-- Camera arrows outside a trial only show a hint ("camera not accessible, trial has not started").
-- "?" does not use T. No effect-button presses during a trial (possible later variant).
-- Trial budget per lab about 12 to 15 (set later). Forced first trials per lab: maybe (ask Fabian).
-- Not everything can be seen in one trial, by design (simultaneous events in views that cannot be
-  seen together + stochastic outcomes), not by requiring fast camera movement.
-- Panel screen as large as possible: the terrarium appears smaller than full screen, important
-  cues (bugs, leaf patterns) must be visible at that size.
+- Trial loop on the control panel: choose a combination of 4 unlabelled buttons (max 2 on, FIFO,
+  11 combinations incl. all off; LED grid history) -> close shutter (locks buttons, uncovers Start) ->
+  Start: camera feed on the panel screen, world resets to the same seeded state and start view ->
+  runs for T, only 4 camera arrows (20 degree steps) + idle -> "camera offline", shutter opens.
+- "?" only between trials, does not use T. No button presses during a trial (possible later variant).
+- Trial budget per lab about 12 to 15 (to be set by Stage 1). Forced first trials: open (ask Fabian).
+- Not everything can be seen in one trial, by design (simultaneous events in different views +
+  stochastic outcomes), not by requiring fast camera movement.
+- Panel screen as large as possible; important cues must be visible at that size.
 
-## Labs
-- 2 to 3 lab variants per session, fixed set, counterbalanced order, not chosen by participants.
-- Per lab: new species (no reused plant parts), reshuffled button-to-effect mapping (same effect set),
-  own substrate (transparent liquid vs soil; a lab property, not a button).
-- 2 species per lab, 2 to 3 specimens each, random placement.
-- Cosmetic variation (background, box shapes) free. Structural variation (pipe routes, pots,
-  lamp positions) changes what is visible from where: document it per lab.
+## Labs and effects
+- 2 to 3 labs per session, fixed set, counterbalanced order. Per lab: new species (no reused parts),
+  reshuffled button mapping (same effect set), own substrate (transparent liquid vs soil).
+- First effects: water, heat, light, air vent (since 04.11; fertilizer + weeds dropped for now).
+  Vent = noisy TV: bugs come and go at random while the vent is on.
+- Controls familiar, organisms alien; sign, form, delay and interactions are per-species parameters,
+  no veridical plant rules. Salience independent of informativeness.
 - Heat and freeze never in the same lab.
 
-## Effects and plants
-- Controls familiar (water, light, heat, air), organisms alien (procedural, no known species).
-- Devices may be directly visible (light colour) or only via secondary signs (fog, frost);
-  the hidden part is how the plants respond (sign, delay, interactions).
-- Interactions between buttons: randomized pairs, never real-world physics (no "water freezes").
-- Avoid veridical plant rules as defaults; sign, functional form, latency, interactions = per-species parameters.
-- Design visual salience independently of informativeness (subtle diagnostic changes, loud uninformative ones).
-- Vent jamming: random amount per press, visible.
-
 ## Agent equivalence
-- The agent sees only Camera A's render (terrarium), never the panel.
-- It also gets the selection history (same matrix as the LED grid, trials x buttons) and the remaining time as inputs.
-- The combination choice is one discrete action per trial.
-
-## Logging (per tick)
-- hidden state, visible subset per viewpoint (ideally a visibility probability per variable),
-  action, chosen combination, remaining time, seeds.
+- The agent sees only Camera A's render (terrarium), never the panel; it also gets the selection
+  history (same matrix as the LED grid) and the remaining time. Combination = one discrete input per trial.
 
 ## Open items from other sessions
-- 2026-10-09 (LeWM): game needs a controllable novelty axis (ID/OOD split) and logged ground-truth state.
-- 2026-10-11: logging schema + Camera A RenderTexture split (spec: claude/13-control-panel-spec.md in the
-  claude.ai project). Event logging not yet implemented.
-- 2026-10-22: the game must not be an upscaled table: partial/probabilistic observation from views,
-  information spread over views and time, nuisance variation (lighting, foliage), several hidden causes
-  for the same symptom (droop from roots / pests / light). Lighting = controlled factor.
+- 2026-10-09 (LeWM): controllable novelty axis (ID/OOD split) + logged ground-truth state.
+  With own data the ID/OOD split becomes unseen views or combinations; designed random effects with
+  known probability give the aleatoric ground truth directly.
+- 2026-10-11: Camera A RenderTexture split + logging schema (claude/13-control-panel-spec.md). Event logging not yet built.
+- 2026-10-22: not an upscaled table: partial/probabilistic observation, information spread over views
+  and time, several hidden causes for the same symptom.
+- Camera with several specimens: orbit centre vs. per plant still open (decides which views exist).
 
-## Open questions raised by your sync-out (answered in claude.ai or still open)
-- Combinations: resolved by you (max 2 on, FIFO, 11 combinations incl. all off).
-- Fertilizer as the noisy-TV source (decided 26.10): weeds sprout at random (positions/numbers) each trial,
-  but their effect on the plants is fixed and learnable, so the randomness stays uninformative.
-- Camera with several specimens: orbit centre vs. per plant still open (affects which views exist = observation model).
-
-## Next builds (Laura)
-- Second alien plant (not tree-like).
-- Roots + transparent containers (substrate per lab).
-- First full lab with random plant placement.
-- Panel with shutter, camera on/off, timer.
-- Optional: pest infestation visuals.
+## Current builds (from your sync-out)
+- Cactus (2nd plant): segments in the simulation built, Laura tests it in the editor; then cactus beside the tree.

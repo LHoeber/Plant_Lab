@@ -80,6 +80,19 @@ public class TipProgram
 ///   module, no rule     the tip is finished (it rests there)
 ///   other symbols, !, f no effect (thickness comes from the thickness settings)
 /// Growth only happens at tips: a module is expanded when the tip reaches it, and grown segments never get longer.
+///
+/// Cactus (with a segment type in PlantSettings.cactusSegment):
+///   S(s)                a segment (size factor s) at the current point, axis along the heading; everything after it
+///                       becomes the segment's own rules (the branch's tip is finished there)
+///   a segment's rules   run all at once when the segment reaches segmentChildThreshold, in segment space, starting at
+///                       its tip with the heading along its axis:
+///     turns, [ ]        as above
+///     ~                 to the nearest free areole in the heading's direction (roll first: /(b) &amp;(a) ~)
+///     S(s)              a child segment there (or on the tip, without ~); what follows is the child's rules. Children
+///                       appear once their areole exists, one after another (segmentChildInterval)
+///     flower symbol     a bud at the tip (or at the areole after a ~)
+///     rule symbols      replaced right there; no rule = done
+///     F, f, leaves      no effect on segments
 /// </summary>
 public class LSystemDevelopment : IPlantDevelopment
 {
@@ -90,6 +103,7 @@ public class LSystemDevelopment : IPlantDevelopment
 
     readonly HashSet<char> ruleSymbols = new HashSet<char>();
     readonly string leafSymbols, flowerSymbols;
+    readonly CactusSegmentSettings cactus;//null: S and ~ have no effect
     readonly float unit, angle;
 
     //a rule chain without any growth (e.g. A -> /(10) A) would loop forever: at most this many replacements per tip and step
@@ -105,6 +119,7 @@ public class LSystemDevelopment : IPlantDevelopment
         angle = s.lsAngle;
         leafSymbols = s.leafSymbols ?? "";
         flowerSymbols = s.flowerSymbols ?? "";
+        cactus = s.cactusSegment;
         try
         {
             var constants = new List<(string, double)>();
@@ -204,6 +219,13 @@ public class LSystemDevelopment : IPlantDevelopment
                 continue;
             }
             if (IsOrgan(c)) { PlaceOrgan(sim, b, m, b.tipDir, b.tipNormal); p.pos++; continue; }
+            if (c == 'S' && cactus != null)
+            {
+                //a segment: the rest of the program is its own; the branch's tip ends here
+                sim.AddSegmentOnBranch(b, b.tipDir, b.tipNormal, SizeOf(m), q.GetRange(p.pos + 1, q.Count - p.pos - 1));
+                p.pos = q.Count;
+                return State.Finished;
+            }
             if (ruleSymbols.Contains(c))
             {
                 if (rewrites >= MaxRewritesPerStep) return State.Waiting;
@@ -240,6 +262,11 @@ public class LSystemDevelopment : IPlantDevelopment
                 continue;
             }
             if (IsOrgan(c)) { PlaceOrgan(sim, b, m, H, U); continue; }
+            if (c == 'S' && cactus != null)
+            {
+                sim.AddSegmentOnBranch(b, H, U, SizeOf(m), q.GetRange(i + 1, end - i - 1));
+                return;
+            }
             if (c == 'F' || ruleSymbols.Contains(c))
             {
                 Branch child = sim.AddBranchAtTip(b, H, U);
@@ -251,9 +278,69 @@ public class LSystemDevelopment : IPlantDevelopment
 
     void PlaceOrgan(PlantSimulation sim, Branch b, LModule m, Vector3 H, Vector3 U)
     {
-        float size = m.Params.Length > 0 ? (float)m.Params[0] : 1f;
+        float size = SizeOf(m);
         if (leafSymbols.IndexOf(m.Symbol) >= 0) sim.AddLeafAtTip(b, H, U, size);
         else sim.AddFlowerAtTip(b, H, size);
+    }
+
+    static float SizeOf(LModule m) => m.Params.Length > 0 ? (float)m.Params[0] : 1f;
+
+    //a rule chain without end on a segment (e.g. A -> /(10) A) would loop forever: at most this many replacements
+    const int MaxSegmentRewrites = 512;
+
+    /// <summary>
+    /// Runs what followed a segment's S (once it reaches the child threshold): plans its children, places its flowers.
+    /// Segment space: the turtle starts at the tip, heading along the axis (+y), up = +z.
+    /// </summary>
+    public void RunSegmentProgram(PlantSimulation sim, CactusSegment seg)
+    {
+        List<LModule> work = seg.program;
+        seg.program = null;
+        int budget = MaxSegmentRewrites, order = 0;
+        RunOnSegment(sim, seg, work, Vector3.up, Vector3.forward, -1, -1, ref budget, ref order);
+        if (budget < 0)
+            Debug.LogWarning($"Plant L-system ({sim.Settings.name}): a segment's rules were cut off after {MaxSegmentRewrites} " +
+                             "replacements (a rule chain without end?).", sim.Settings);
+    }
+
+    /// <summary>One sequence of a segment's rules, from the turtle state H/U at the tip (rib -1) or at an areole.</summary>
+    void RunOnSegment(PlantSimulation sim, CactusSegment seg, List<LModule> work, Vector3 H, Vector3 U, int rib, int areole,
+                      ref int budget, ref int order)
+    {
+        for (int i = 0; i < work.Count; i++)
+        {
+            LModule m = work[i];
+            char c = m.Symbol;
+            if (IsTurn(c)) { Turn(ref H, ref U, c, AngleOf(m)); continue; }
+            if (c == '[')
+            {
+                int close = MatchingBracket(work, i);
+                RunOnSegment(sim, seg, work.GetRange(i + 1, close - i - 1), H, U, rib, areole, ref budget, ref order);
+                i = close;
+                continue;
+            }
+            if (c == '~') { sim.ToAreole(seg, ref H, ref U, out rib, out areole); continue; }
+            if (c == 'S')
+            {
+                //everything after it belongs to the child
+                sim.PlanChild(seg, rib, areole, H, U, SizeOf(m), work.GetRange(i + 1, work.Count - i - 1), order++);
+                return;
+            }
+            if (flowerSymbols.IndexOf(c) >= 0) { sim.AddFlowerOnSegment(seg, rib, areole, H, SizeOf(m)); continue; }
+            if (ruleSymbols.Contains(c))
+            {
+                if (--budget < 0) return;
+                LRule rule = System.Choose(m, seg.rng, out double[] slots);
+                if (rule == null) return;//no rule applies: done
+                var successor = new List<LModule>(rule.Successor.Length);
+                LSystem.Apply(rule, slots, successor);
+                work.RemoveAt(i);
+                work.InsertRange(i, successor);
+                i--;
+                continue;
+            }
+            //F, f, leaves, ']', other symbols: no effect on a segment
+        }
     }
 
     bool IsOrgan(char c) => leafSymbols.IndexOf(c) >= 0 || flowerSymbols.IndexOf(c) >= 0;

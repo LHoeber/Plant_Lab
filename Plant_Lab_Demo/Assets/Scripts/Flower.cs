@@ -4,11 +4,13 @@ using UnityEngine;
 /// Everything the simulation knows about one flower. Plain data, no GameObject:
 /// the visual (a prefab with FlowerMorph) is created and updated separately by PlantVisuals.
 /// Classic: a flower sits at the end of a finished branch and points in that branch's last direction.
-/// L-system: wherever a flower symbol is placed, pointing in the turtle's direction there.
+/// L-system: wherever a flower symbol is placed, pointing in the turtle's direction there (also on cactus segments).
 /// </summary>
 public class Flower
 {
-    public Branch branch;       //branch whose end the flower sits on
+    public Branch branch;       //branch whose end the flower sits on (on a cactus segment: the main stem, unused)
+    public CactusSegment segment; //cactus: the segment it sits on (null = on a branch)
+    public int segmentRib = -1, segmentAreole = -1;//cactus: the areole it sits on (-1 = the segment's tip)
     public int seg;             //last segment of that branch at the time the flower spawned
     public float offset;        //offset in that segment = its full length (the end point)
     public float arcPos;        //distance from the branch base (the branch's end for classic flowers)
@@ -22,7 +24,7 @@ public class Flower
     public OrganBox[] selfCheckedBoxes;//pose at the last check
     public float birthTime;     //sim time the bud appeared (it stays closed until the Flowering phase)
     public float sizeFactor;    //random per-flower size multiplier
-    public Vector3 dir;         //direction the flower faces as grown: the branch's last direction (rest shape)
+    public Vector3 dir;         //direction the flower faces as grown: the branch's last direction (rest shape; on a segment: segment space)
     public Quaternion tilt = Quaternion.identity; //its own tilt away from obstacles (rest shape)
     public float sizeCap = float.PositiveInfinity; //it got stuck at this size and stopped growing
     public readonly GrowthStop stop = new GrowthStop(); //when it may grow again after getting stuck

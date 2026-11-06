@@ -20,7 +20,8 @@ public class CactusSegmentSettings : ScriptableObject
     [Range(12, 256)] public int columns = 96;
 
     [Header("Tufts")]
-    [Tooltip("The tuft model (Blender). Its first mesh and material are used; +y of the model points along the spines. " +
+    [Tooltip("The tuft model (Blender). All its meshes and materials are used (e.g. spikes + fuzz joined into one object); " +
+             "+y of the model points along the spines. " +
              "Empty: small white dots.")]
     public GameObject tuftPrefab;
     [Tooltip("Scale of the tuft model (1 = as modeled). Without a model: dot diameter = 0.012 m x this.")]
@@ -41,46 +42,134 @@ public class CactusSegmentSettings : ScriptableObject
 
     public Material BodyMaterial => bodyMaterial != null ? bodyMaterial : DefaultMaterial(ref defaultBody, new Color(0.35f, 0.6f, 0.25f));
 
-    /// <summary>The tuft mesh with its placement inside the prefab, and its material (white dots without a model).</summary>
-    public (Mesh mesh, Matrix4x4 meshToRoot, Material material) TuftSource()
+    /// <summary>
+    /// One part of the tuft model: one submesh of one of its meshes, with the mesh's placement inside the prefab and the
+    /// material it's drawn with. A model joined from objects with different materials (e.g. spikes + fuzz) has one part
+    /// per material; each part becomes its own submesh in the combined tuft mesh, so each keeps its own material.
+    /// </summary>
+    public struct TuftPart
     {
+        public Mesh mesh;
+        public int subMesh;
+        public Matrix4x4 meshToRoot;
+        public Material material;
+    }
+
+    readonly List<TuftPart> tuftParts = new List<TuftPart>();//reused: filled again on every call of TuftParts()
+
+    /// <summary>The parts of the tuft model (all meshes in the prefab, each submesh with its material); a white dot without a model.</summary>
+    public List<TuftPart> TuftParts()
+    {
+        tuftParts.Clear();
         if (tuftPrefab != null)
         {
-            MeshFilter mf = tuftPrefab.GetComponentInChildren<MeshFilter>();
-            if (mf != null && mf.sharedMesh != null)
+            foreach (MeshFilter mf in tuftPrefab.GetComponentsInChildren<MeshFilter>())
             {
+                if (mf.sharedMesh == null) continue;
                 //the mesh's own placement inside the prefab (without the prefab root's position)
                 Matrix4x4 toRoot = tuftPrefab.transform.worldToLocalMatrix * mf.transform.localToWorldMatrix;
                 MeshRenderer mr = mf.GetComponent<MeshRenderer>();
-                Material m = mr != null && mr.sharedMaterial != null ? mr.sharedMaterial : DefaultMaterial(ref defaultTuft, new Color(0.92f, 0.92f, 0.85f));
-                return (mf.sharedMesh, toRoot, m);
+                Material[] mats = mr != null ? mr.sharedMaterials : System.Array.Empty<Material>();
+                for (int s = 0; s < mf.sharedMesh.subMeshCount; s++)
+                {
+                    //a renderer with fewer materials than submeshes draws the extra submeshes with its last material
+                    Material m = mats.Length > 0 ? mats[Mathf.Min(s, mats.Length - 1)] : null;
+                    if (m == null) m = DefaultMaterial(ref defaultTuft, new Color(0.92f, 0.92f, 0.85f));
+                    tuftParts.Add(new TuftPart { mesh = mf.sharedMesh, subMesh = s, meshToRoot = toRoot, material = m });
+                }
             }
         }
-        if (dotMesh == null) dotMesh = Dot();
-        return (dotMesh, Matrix4x4.Scale(Vector3.one * 0.012f), DefaultMaterial(ref defaultTuft, new Color(0.92f, 0.92f, 0.85f)));
+        if (tuftParts.Count == 0)
+        {
+            if (dotMesh == null) dotMesh = Dot();
+            tuftParts.Add(new TuftPart { mesh = dotMesh, subMesh = 0, meshToRoot = Matrix4x4.Scale(Vector3.one * 0.012f),
+                                         material = DefaultMaterial(ref defaultTuft, new Color(0.92f, 0.92f, 0.85f)) });
+        }
+        return tuftParts;
+    }
+
+    /// <summary>The materials for a tuft mesh built by TuftBuilder.Build (one per part of the model, in the same order).</summary>
+    public Material[] TuftMaterials()
+    {
+        List<TuftPart> ps = TuftParts();
+        var mats = new Material[ps.Count];
+        for (int i = 0; i < ps.Count; i++) mats[i] = ps[i].material;
+        return mats;
     }
 
     /// <summary>
-    /// Adds the tufts of one segment to `parts` (for Mesh.CombineMeshes): every areole except the ones in `skip`
-    /// (e.g. areoles a child segment grows out of). segmentToRoot places the segment (its base, axis +y) in the combined mesh.
+    /// Adds the tufts of one segment to `tufts` (combined later by tufts.Build): every areole except the ones in `skip`
+    /// (indices into `areoles`, e.g. areoles a child segment grows out of). segmentToRoot places the segment (its base,
+    /// axis +y) in the combined mesh; scale multiplies the tufts' size (e.g. smaller on a young, still swelling segment).
     /// </summary>
-    public void AddTufts(List<CombineInstance> parts, List<CactusShape.SurfacePoint> areoles, Matrix4x4 segmentToRoot,
-                         int seed, ICollection<int> skip = null)
+    public void AddTufts(TuftBuilder tufts, List<CactusShape.SurfacePoint> areoles, Matrix4x4 segmentToRoot,
+                         int seed, ICollection<int> skip = null, float scale = 1f)
     {
-        var (mesh, meshToRoot, _) = TuftSource();
-        var rng = new System.Random(seed * 7919 + 1);
+        List<TuftPart> ps = TuftParts();
         for (int i = 0; i < areoles.Count; i++)
         {
-            float turn = ((float)rng.NextDouble() * 2f - 1f) * tuftRandomTurn;//always drawn: the others keep their turn
             if (skip != null && skip.Contains(i)) continue;
             CactusShape.SurfacePoint p = areoles[i];
+            //turn from the areole's id: it keeps its turn when new tufts appear on a growing column
+            float turn = (CactusShape.Hash01(seed + 7919, p.rib, p.index) * 2f - 1f) * tuftRandomTurn;
             Vector3 dir = Vector3.Slerp(p.normal, Vector3.up, tuftAxisAlignment);
             Quaternion rot = Quaternion.FromToRotation(Vector3.up, dir) * Quaternion.AngleAxis(turn, Vector3.up);
-            parts.Add(new CombineInstance
+            Matrix4x4 place = segmentToRoot * Matrix4x4.TRS(p.position + p.normal * tuftOffset, rot, Vector3.one * (tuftScale * scale));
+            for (int k = 0; k < ps.Count; k++)
+                tufts.Part(k).Add(new CombineInstance { mesh = ps[k].mesh, subMeshIndex = ps[k].subMesh, transform = place * ps[k].meshToRoot });
+        }
+    }
+
+    /// <summary>
+    /// Collects tufts (AddTufts) and combines them into one mesh with one submesh per part of the tuft model, so a model
+    /// with several materials keeps them all (give the renderer TuftMaterials()). Mesh.CombineMeshes can either merge
+    /// everything into one submesh or keep every single tuft as its own submesh; so each part is first merged on its own
+    /// into a temporary mesh, and these are then combined as separate submeshes.
+    /// </summary>
+    public class TuftBuilder
+    {
+        readonly List<List<CombineInstance>> parts = new List<List<CombineInstance>>();
+        readonly List<Mesh> temp = new List<Mesh>();
+
+        public void Clear() { foreach (var p in parts) p.Clear(); }
+
+        /// <summary>The tufts collected for part k of the model.</summary>
+        public List<CombineInstance> Part(int k)
+        {
+            while (parts.Count <= k) parts.Add(new List<CombineInstance>());
+            return parts[k];
+        }
+
+        /// <summary>Puts all collected tufts into `target` (cleared first), one submesh per part.</summary>
+        public void Build(Mesh target)
+        {
+            target.Clear();
+            target.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            int n = parts.Count;
+            while (n > 0 && parts[n - 1].Count == 0) n--;//parts left over from an earlier model with more materials
+            if (n == 0) return;
+            if (n == 1) { target.CombineMeshes(parts[0].ToArray(), true, true); return; }
+            var perPart = new CombineInstance[n];
+            for (int k = 0; k < n; k++)
             {
-                mesh = mesh,
-                transform = segmentToRoot * Matrix4x4.TRS(p.position + p.normal * tuftOffset, rot, Vector3.one * tuftScale) * meshToRoot,
-            });
+                if (temp.Count <= k) temp.Add(new Mesh { name = "Tuft part", hideFlags = HideFlags.DontSave });
+                temp[k].Clear();
+                temp[k].indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+                temp[k].CombineMeshes(parts[k].ToArray(), true, true);
+                perPart[k] = new CombineInstance { mesh = temp[k], transform = Matrix4x4.identity };
+            }
+            target.CombineMeshes(perPart, false, true);
+        }
+
+        /// <summary>Destroys the temporary meshes.</summary>
+        public void Release()
+        {
+            foreach (Mesh m in temp)
+            {
+                if (m == null) continue;
+                if (Application.isPlaying) Object.Destroy(m); else Object.DestroyImmediate(m);
+            }
+            temp.Clear();
         }
     }
 
