@@ -33,6 +33,8 @@ public partial class PlantSimulation//cactus segments: Cactus/PlantSimulationCac
 
     /// <summary>What growing tips can run into; null = nothing. Set from outside (e.g. UnityObstacleField).</summary>
     public IObstacleField Obstacles;
+    /// <summary>Where the substrate is (roots grow freely inside it); null = no substrate anywhere. Set from outside (e.g. UnitySoilField).</summary>
+    public ISoilField Soil;
 
     /// <summary>
     /// Collision shape of each leaf / flower variant (index = variant), built from the prefabs.
@@ -62,6 +64,7 @@ public partial class PlantSimulation//cactus segments: Cactus/PlantSimulationCac
         Development = settings.development == DevelopmentMode.LSystem
             ? new LSystemDevelopment(settings) : (IPlantDevelopment)new ClassicDevelopment();
         Development.Begin(this);
+        BeginRoots();
     }
 
     // --- growth formulas ---
@@ -74,6 +77,7 @@ public partial class PlantSimulation//cactus segments: Cactus/PlantSimulationCac
 
     /// <summary>Current radius of a point: approaches its target radius, fast at first, then slowing down.</summary>
     public float RadiusAt(Branch b, float arcPos, float age) =>
+        b.rootType != null ? RootRadius(b, arcPos, age) :
         TargetRadius(b, arcPos) * (1f - Mathf.Exp(-age / Settings.radialGrowthTime))
         * Mathf.Lerp(1f, Settings.stemWitheredRadiusFraction, StemWither(b, arcPos));//thinner while withering
 
@@ -106,10 +110,12 @@ public partial class PlantSimulation//cactus segments: Cactus/PlantSimulationCac
         {
             Development.Grow(this, Settings.growthSpeed * dt);
             if (Development is LSystemDevelopment ls) GrowSegments(dt, ls);
+            GrowRoots(dt);
         }
         //positions and radii for the new sim time; creation order = parents before children
         foreach (Branch b in Branches) b.UpdateGeometry(this);
         UpdateCactusGeometry();
+        UpdateRootGeometry();
         //anything that now touches an obstacle turns/bends away, before this state is ever drawn
         ResolveContacts(dt);
         ResolveCactusContacts(dt);
@@ -133,6 +139,7 @@ public partial class PlantSimulation//cactus segments: Cactus/PlantSimulationCac
                 bool allFinished = true;
                 foreach (Branch b in Branches) if (b.finishTime < 0f && !b.stopped) { allFinished = false; break; }
                 foreach (CactusSegment c in CactusSegments) if (!c.Finished) { allFinished = false; break; }
+                if (RootsStillGrowing()) allFinished = false;
                 if (allFinished || inPhase >= s.growingDuration) EnterNextPhase();
                 break;
             case PlantPhase.Flowering:
@@ -176,6 +183,7 @@ public partial class PlantSimulation//cactus segments: Cactus/PlantSimulationCac
         {
             foreach (Branch b in Branches) b.StopGrowth(this);
             StopSegments();
+            StopRoots();
         }
         Phase = next;
         PhaseStartTime = SimTime;
@@ -277,6 +285,7 @@ public partial class PlantSimulation//cactus segments: Cactus/PlantSimulationCac
     /// <summary>Called by a branch when its tip passes a spawn check position (distance from its base).</summary>
     public void SpawnCheck(Branch branch, float arcPos)
     {
+        if (branch.rootType != null) { RootSpawnCheck(branch, arcPos); return; }
         PlantSettings s = Settings;
         System.Random r = branch.spawnRng;
         //always the same draws per check, whatever the outcome: then raising spawnProbability only adds
@@ -379,6 +388,7 @@ public partial class PlantSimulation//cactus segments: Cactus/PlantSimulationCac
     /// <summary>Direction for the next segment, in the current (bent) shape: toward the light, plus noise.</summary>
     public Vector3 NextDirection(Branch b)
     {
+        if (b.rootType != null) return RootDirection(b);
         PlantSettings s = Settings;
         Vector3 toTarget = Vector3.up;
         if (LightTarget.HasValue)

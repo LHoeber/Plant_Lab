@@ -24,6 +24,9 @@ public class PanelLayout : ScriptableObject
     public Rect history = Rect.MinMaxRect(0.305f, -0.07f, 0.375f, 0.06f);
     [Tooltip("The four camera arrows, as a cross.")]
     public Rect arrows = Rect.MinMaxRect(0.165f, -0.215f, 0.375f, -0.085f);
+    [Tooltip("Distance of the arrows from the cross center, in arrow cells (1 cell = 1/3 of the smaller side of Arrows). " +
+             "x: left/right, y: up/down. 1 = regular cross; buttons are 0.9 cells wide, so y = 0.5 makes up and down touch.")]
+    public Vector2 arrowSpread = new Vector2(1.1f, 0.55f);
     [Tooltip("How far the shutter slides up from closed (over the buttons) to open (over Start).")]
     public float shutterTravel = 0.145f;
 

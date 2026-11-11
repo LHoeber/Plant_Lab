@@ -41,10 +41,12 @@ public class UnityObstacleField : IObstacleField
     //invisible probe shapes, only used to ask Unity how deep a box/capsule reaches into an obstacle
     static BoxCollider probeBox;
     static CapsuleCollider probeCapsule;
+    static SphereCollider probeSphere;
 
     static void EnsureProbes()
     {
-        if (probeBox != null && probeCapsule != null) return;
+        if (probeBox != null && probeCapsule != null && probeSphere != null) return;
+        if (probeBox != null) Object.DestroyImmediate(probeBox.gameObject);//from before the sphere probe existed
         var go = new GameObject("PlantContactProbe") { hideFlags = HideFlags.HideAndDontSave };
         go.layer = 2;//Ignore Raycast
         go.transform.position = new Vector3(0f, -20000f, 0f);
@@ -53,6 +55,33 @@ public class UnityObstacleField : IObstacleField
         probeCapsule = go.AddComponent<CapsuleCollider>();
         probeCapsule.isTrigger = true;
         probeCapsule.direction = 1;//along Y
+        probeSphere = go.AddComponent<SphereCollider>();
+        probeSphere.isTrigger = true;
+    }
+
+    /// <summary>
+    /// Collider.ClosestPoint only works for primitives and convex mesh colliders. Non-convex mesh colliders
+    /// (e.g. a container modeled in Blender) are answered with ComputePenetration instead.
+    /// </summary>
+    static bool HasClosestPoint(Collider c) =>
+        c is BoxCollider || c is SphereCollider || c is CapsuleCollider || (c is MeshCollider m && m.convex);
+
+    /// <summary>
+    /// Direction out of an obstacle for a sphere touching it (world space, unit length), or zero if it doesn't touch.
+    /// </summary>
+    static Vector3 AwayFrom(Collider other, Vector3 wCenter, float wRadius)
+    {
+        if (HasClosestPoint(other))
+        {
+            Vector3 away = wCenter - other.ClosestPoint(wCenter);
+            return away.sqrMagnitude > 1e-12f ? away.normalized : Vector3.zero;
+        }
+        EnsureProbes();
+        probeSphere.radius = Mathf.Max(wRadius, 1e-5f);
+        probeSphere.center = Vector3.zero;
+        return Physics.ComputePenetration(probeSphere, wCenter, Quaternion.identity, other,
+                                          other.transform.position, other.transform.rotation, out Vector3 dir, out float dist) && dist > 0f
+            ? dir.normalized : Vector3.zero;
     }
 
     public bool BoxPenetration(Vector3 center, Vector3 half, Quaternion rotation, out Vector3 push)
@@ -105,7 +134,8 @@ public class UnityObstacleField : IObstacleField
                                             out Vector3 dir, out float dist) || dist <= 0f) continue;
             //thin obstacles (e.g. 3 cm glass): if a part is more than halfway in, the shortest way out is the far side.
             //never push through: only toward the side the plant grows on (where its base is), a little per pass
-            Vector3 plantSide = plantBase - other.ClosestPoint(plantBase);
+            //(only for obstacles that can answer ClosestPoint; a non-convex mesh, e.g. a container, is assumed thick enough)
+            Vector3 plantSide = HasClosestPoint(other) ? plantBase - other.ClosestPoint(plantBase) : Vector3.zero;
             if (plantSide.sqrMagnitude > 1e-10f && Vector3.Dot(dir, plantSide) < 0f)
             {
                 dir = plantSide.normalized;
@@ -132,10 +162,9 @@ public class UnityObstacleField : IObstacleField
         int n = Physics.OverlapSphereNonAlloc(wFrom, wRadius, overlaps, layers, QueryTriggerInteraction.Ignore);
         for (int i = 0; i < n; i++)
         {
-            Vector3 closest = overlaps[i].ClosestPoint(wFrom);
-            Vector3 away = wFrom - closest;
+            Vector3 away = AwayFrom(overlaps[i], wFrom, wRadius);
             //only counts if we're moving toward it (moving away/along is free)
-            Vector3 wNormal = away.sqrMagnitude > 1e-12f ? away.normalized : -wDir;//center inside the collider: treat as head-on
+            Vector3 wNormal = away != Vector3.zero ? away : -wDir;//center inside the collider: treat as head-on
             if (Vector3.Dot(wDir, wNormal) < 0f)
             {
                 hitDistance = 0f;

@@ -74,6 +74,8 @@ public class Branch
     public int flowerCount;         // flowers placed on this branch so far
     public TipProgram program;      // L-system: what this tip still has to do (null in classic development)
     public float phyllotaxisAngle;  // angle around the branch (degrees) of the most recent leaf/branch
+    public RootSettings rootType;   // set for roots (PlantSimulation.Roots), null for the shoot
+    public float rootMaxLength;     // roots: length it grows to
 
     public float TotalLength => committedLength + tipSegLen;
     public int SegmentCount => segRest.Count;
@@ -189,7 +191,8 @@ public class Branch
     /// </summary>
     Vector3 SlideDirection(Vector3 planned, PlantSimulation sim)
     {
-        Vector3 toLight = sim.LightTarget.HasValue ? (sim.LightTarget.Value - TipPosition) : Vector3.up;
+        Vector3 toLight = rootType != null ? Vector3.down//roots: gravity instead of light
+            : sim.LightTarget.HasValue ? (sim.LightTarget.Value - TipPosition) : Vector3.up;
         Vector3 normalNow = nodeRot[nodeRot.Count - 1] * tipNormal;
         Vector3[] candidates = { planned, toLight, normalNow, -normalNow };
         foreach (Vector3 c in candidates)
@@ -221,7 +224,7 @@ public class Branch
             {
                 //the check position lies on the current tip segment
                 sim.SpawnCheck(this, nextSpawnCheck);
-                nextSpawnCheck += s.spawnCheckInterval;
+                nextSpawnCheck += rootType != null ? rootType.sideRootSpacing : s.spawnCheckInterval;
             }
             else if (nodeAt <= TotalLength)//commit segment, start new one
             {
@@ -276,6 +279,7 @@ public class Branch
         committedLength += length;
         nodeArc.Add(committedLength);
         tipSegLen -= length;//remove already committed part, before tip continues growing
+        if (rootType != null) sim.RootPieceFormed(nodes[nodes.Count - 2], nodes[nodes.Count - 1]);//roots are rigid: final position
     }
 
     /// <summary>

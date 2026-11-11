@@ -1,9 +1,18 @@
 # Plant_Lab inbox (mirror from the claude.ai sync hub)
-Last updated: 2026-11-04 by the "PhD topic context" session. Read-only for Claude Code.
+Last updated: 2026-11-10 by the "PhD topic context" session. Read-only for Claude Code.
 Full design text: Notion "Experimental Prototype 2" -> section "Paradigm Structure".
 Plan until the first TAC meeting (mid-December): project doc claude/15-plan-until-tac.md (claude.ai project).
 
-## New (2026-11-04): air vent + bugs replace fertilizer + weeds
+## New (2026-11-08): first Stage 1 results -> the tables will still change
+- The Stage 1 notebook (tabular world with water / heat / light / vent, observation table, Dirichlet learner,
+  4 drivers, pure-driver agents) runs. First result with full observation: the current world is learned within
+  5 to 8 trials, so the drivers separate only weakly. The rules will be redesigned (slower or rarer effects,
+  effects that need the right view, transient events). Keep holding back concrete plant responses per button.
+- The vent + bugs mechanic (04.11) stays. Next on the concept side: view-restricted observer (camera-dependent).
+- Lab-meeting feedback (10.11) for the game: check whether people prefer certain buttons by position (e.g. the lower
+  ones) -> keep the mapping randomized per participant and log button positions; organisms must be alien enough.
+
+## (2026-11-04): air vent + bugs replace fertilizer + weeds
 - Laura's decision (Stage 1 tables, 04.11): the 4th button is now an AIR VENT (not fertilizer). Noisy TV = BUGS:
   while the vent is on, the bug level (none / few / many) moves one step up or down at random every tick
   (random walk, p_up = p_down = 0.3 for now); vent off = bugs stay at their current level.
@@ -66,4 +75,5 @@ Plan until the first TAC meeting (mid-December): project doc claude/15-plan-unti
 - Camera with several specimens: orbit centre vs. per plant still open (decides which views exist).
 
 ## Current builds (from your sync-out)
-- Cactus (2nd plant): segments in the simulation built, Laura tests it in the editor; then cactus beside the tree.
+- Cactus (2nd plant): grows in the editor; stutter fixed (05.11), multi-material tufts (06.11). Open: segments stuck
+  in the 2.5 mm clearance gap (fix proposed); then cactus beside the tree. Panel arrow spacing configurable (09.11).

@@ -18,6 +18,9 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
     public LayerMask obstacleLayers;
     [Tooltip("Draw the collision boxes of all leaves/flowers in the Scene view (while playing).")]
     public bool showCollisionShapes;
+    [Tooltip("Draw the root density in the Scene view (while playing): a cube per grid point, larger and redder the closer " +
+             "it is to the roots' maxDensity.")]
+    public bool showRootDensity;
     [Tooltip("Sim seconds per real second (0 = paused).")]
     [Range(0f, 20f)] public float simSpeed = 1f;//speed of overall simulation relative to real time
     [Tooltip("Tick to restart growth from scratch with the current seed (and current, possibly randomized, settings).")]
@@ -89,6 +92,7 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
         meshDirty = true;
         PlantSettings s = ActiveSettings;
         sim = s != null ? new PlantSimulation(s, seed) : null;
+        if (sim != null) sim.Soil = new UnitySoilField(transform);
         if (sim != null && obstacleLayers.value != 0)
         {
             sim.Obstacles = new UnityObstacleField(transform, obstacleLayers, 0.5f * s.obstacleClearance);
@@ -154,6 +158,22 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
     {
         if (showCollisionShapes && sim != null && visuals != null)
             visuals.DrawCollisionShapes(leafShapes, flowerShapes, sim);
+        if (showRootDensity && sim != null && sim.RootDensity != null) DrawRootDensity();
+    }
+
+    void DrawRootDensity()
+    {
+        RootDensityGrid grid = sim.RootDensity;
+        float max = sim.RootType.maxDensity;
+        Gizmos.matrix = transform.localToWorldMatrix;
+        foreach (var p in grid.Points)
+        {
+            float u = Mathf.Clamp01(p.Value / max);
+            if (u < 0.05f) continue;
+            Gizmos.color = Color.Lerp(new Color(0.2f, 0.8f, 0.2f, 0.5f), new Color(1f, 0.1f, 0.1f, 0.9f), u);
+            Gizmos.DrawWireCube(grid.PointPosition(p.Key), Vector3.one * (grid.CellSize * Mathf.Lerp(0.2f, 0.9f, u)));
+        }
+        Gizmos.matrix = Matrix4x4.identity;
     }
 
     [ContextMenu("Randomize")]
@@ -205,7 +225,7 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
     //called by the editor when the component is added (or Reset from its menu): sensible default layer
     void Reset()
     {
-        obstacleLayers = LayerMask.GetMask("Obstacle");
+        obstacleLayers = LayerMask.GetMask("Obstacles");//the layer's name in the project (was "Obstacle" = no layer)
     }
 
     //called by the editor whenever a value on this component is changed in the inspector

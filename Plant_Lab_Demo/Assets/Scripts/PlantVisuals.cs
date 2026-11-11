@@ -14,6 +14,8 @@ public class PlantVisuals
     readonly List<OrganVisual> leafVisuals = new List<OrganVisual>();   //same order as PlantSimulation.Leaves (null = no prefab)
     readonly List<OrganVisual> flowerVisuals = new List<OrganVisual>(); //same order as PlantSimulation.Flowers (null = no prefab)
     readonly CactusVisuals cactus;                             //cactus segments (one object each)
+    Mesh rootMesh;                                             //all roots, on a generated child (own material)
+    MeshRenderer rootRenderer;
 
     //buffers, reused every rebuild to avoid newly allocating memory every frame
     readonly List<Vector3> pts = new List<Vector3>();//center line of one branch
@@ -48,6 +50,7 @@ public class PlantVisuals
         flowerVisuals.Clear();
         cactus.Clear();
         mesh.Clear();
+        if (rootMesh != null) rootMesh.Clear();
     }
 
     /// <summary>Places the cactus segments and rebuilds the meshes of those that grew or withered visibly.</summary>
@@ -66,28 +69,14 @@ public class PlantVisuals
         foreach (Branch b in sim.Branches)
         {
             if (!Valid(b.TipPosition) || !Valid(b.nodes[b.nodes.Count - 1])) { WarnInvalid("branch"); continue; }
-            pts.Clear(); radii.Clear(); pointColors.Clear();
-            pts.AddRange(b.nodes);
-            radii.AddRange(b.nodeRadius);
+            pointColors.Clear();
             for (int k = 0; k < b.nodes.Count; k++)
             {
                 Color c = s.WitherColor(stemColor, sim.StemWither(b, b.nodeArc[k]));
                 //material colors get converted to linear space for the shader automatically, vertex colors don't
                 pointColors.Add(linearSpace ? c.linear : c);
             }
-            Color endColor = pointColors[pointColors.Count - 1];
-            //all completed nodes and the still growing tip position (radius 0: brand-new tissue -> pointy)
-            //right after segment was committed, the if avoids zero-vector problems
-            if (b.tipSegLen > 1e-4f) { pts.Add(b.TipPosition); radii.Add(0f); pointColors.Add(endColor); }
-            else if (b.SegmentCount > 0)
-            {
-                //finished branch: its end has a radius > 0, so close the open tube end with a short cone cap
-                float rEnd = radii[radii.Count - 1];
-                pts.Add(b.LastNode + b.segDir[b.SegmentCount - 1] * rEnd);
-                radii.Add(0f);
-                pointColors.Add(endColor);
-            }
-            TubeMesh.Append(pts, radii, pointColors, PlantSettings.RadialSegments, arc, verts, norms, uvs, colors, tris);
+            AppendTube(b);
         }
         mesh.Clear();//before setting new data, in case the plant was reset or has fewer vertices now
         mesh.SetVertices(verts);
@@ -95,6 +84,70 @@ public class PlantVisuals
         mesh.SetUVs(0, uvs);
         mesh.SetColors(colors);
         mesh.SetTriangles(tris, 0);//also recalculates the bounds (calculateBounds defaults to true)
+
+        RebuildRoots(sim, stemMat, linearSpace);
+    }
+
+    /// <summary>
+    /// Roots: one mesh on a generated child object with the root material (or the stem material), colored like
+    /// that material's base color (they don't wither visibly).
+    /// </summary>
+    void RebuildRoots(PlantSimulation sim, Material stemMat, bool linearSpace)
+    {
+        if (sim.Roots.Count == 0)
+        {
+            if (rootMesh != null) rootMesh.Clear();
+            return;
+        }
+        if (rootMesh == null)
+        {
+            (MeshFilter f, MeshRenderer r) = CactusSegmentSettings.GeneratedChild(root, "Roots (generated)");
+            rootMesh = new Mesh { name = "Roots", hideFlags = HideFlags.DontSave };
+            rootMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            rootMesh.MarkDynamic();
+            f.sharedMesh = rootMesh;
+            rootRenderer = r;
+        }
+        Material mat = sim.RootType.material != null ? sim.RootType.material : stemMat;
+        rootRenderer.sharedMaterial = mat;
+        Color c = mat != null && mat.HasProperty("_BaseColor") ? mat.GetColor("_BaseColor") : Color.white;
+        if (linearSpace) c = c.linear;
+
+        verts.Clear(); norms.Clear(); uvs.Clear(); colors.Clear(); tris.Clear();
+        foreach (Branch b in sim.Roots)
+        {
+            if (!Valid(b.TipPosition) || !Valid(b.nodes[b.nodes.Count - 1])) { WarnInvalid("root"); continue; }
+            pointColors.Clear();
+            for (int k = 0; k < b.nodes.Count; k++) pointColors.Add(c);
+            AppendTube(b);
+        }
+        rootMesh.Clear();
+        rootMesh.SetVertices(verts);
+        rootMesh.SetNormals(norms);
+        rootMesh.SetUVs(0, uvs);
+        rootMesh.SetColors(colors);
+        rootMesh.SetTriangles(tris, 0);
+    }
+
+    /// <summary>Appends a branch's tube (its nodes, radii and pointColors, plus the tip or an end cap) to the buffers.</summary>
+    void AppendTube(Branch b)
+    {
+        pts.Clear(); radii.Clear();
+        pts.AddRange(b.nodes);
+        radii.AddRange(b.nodeRadius);
+        Color endColor = pointColors[pointColors.Count - 1];
+        //all completed nodes and the still growing tip position (radius 0: brand-new tissue -> pointy)
+        //right after segment was committed, the if avoids zero-vector problems
+        if (b.tipSegLen > 1e-4f) { pts.Add(b.TipPosition); radii.Add(0f); pointColors.Add(endColor); }
+        else if (b.SegmentCount > 0)
+        {
+            //finished branch: its end has a radius > 0, so close the open tube end with a short cone cap
+            float rEnd = radii[radii.Count - 1];
+            pts.Add(b.LastNode + b.segDir[b.SegmentCount - 1] * rEnd);
+            radii.Add(0f);
+            pointColors.Add(endColor);
+        }
+        TubeMesh.Append(pts, radii, pointColors, PlantSettings.RadialSegments, arc, verts, norms, uvs, colors, tris);
     }
 
     public void UpdateLeaves(PlantSimulation sim)

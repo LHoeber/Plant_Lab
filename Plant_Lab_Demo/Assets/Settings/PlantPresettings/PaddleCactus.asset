@@ -15,7 +15,7 @@ MonoBehaviour:
   shape:
     width: 0.297
     height: 0.558
-    depth: 0.071
+    depth: 0.127
     columnGrowth: 1
     columnLength: 0.129
     ballDone: 0.646
@@ -32,14 +32,14 @@ MonoBehaviour:
     areoleEnd: 0.93
     staggerAreoles: 1
     areoleJitter: 0.066
-    hillHeight: 0.092
-    hillSharpness: 1.34
+    hillHeight: 0.118
+    hillSharpness: 1.56
     witheredCore: 0.69
   bodyMaterial: {fileID: 2100000, guid: ed64d7231b2fa4f8084dba0e2df1fe2b, type: 2}
   rings: 49
   columns: 122
-  tuftPrefab: {fileID: 6634240034336680880, guid: 98166cf8ff3b449e4944513ddf5b533d, type: 3}
-  tuftScale: 0.6
+  tuftPrefab: {fileID: 7824237151947230259, guid: cf55d2fddd1eb4f5391538bd74c72eae, type: 3}
+  tuftScale: 0.57
   tuftAxisAlignment: 0
   tuftOffset: 0
   tuftRandomTurn: 180

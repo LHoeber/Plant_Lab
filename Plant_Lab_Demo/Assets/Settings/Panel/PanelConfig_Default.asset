@@ -15,7 +15,7 @@ MonoBehaviour:
   effectButtons: 4
   trials: 10
   maxSelected: 2
-  trialSeconds: 15
+  trialSeconds: 30
   instructions: 'WELCOME TO THE LAB
 
 

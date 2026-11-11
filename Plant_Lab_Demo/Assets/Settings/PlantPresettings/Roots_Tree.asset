@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3724e8a2f882b4ca7a59cf2b9edfbe08, type: 3}
+  m_Name: Roots_Tree
+  m_EditorClassIdentifier: Assembly-CSharp::RootSettings
+  mainRootCount: 5
+  mainRootLength: 2
+  startAngleDeg: 35
+  startAngleNoiseDeg: 10
+  startDepth: 0.01
+  sideRootLevels: 2
+  sideRootSpacing: 0.05
+  sideRootProbability: 0.6
+  sideRootStartFraction: 0.15
+  sideRootAngleDeg: 65
+  sideRootLengthFraction: 0.4
+  growthSpeed: 0.08
+  gravitropism: 2.5
+  gravitropismSideFactor: 0.3
+  airGravitropism: 60
+  perturbationStd: 0.5
+  baseRadius: 0.02
+  tipRadiusFraction: 0.25
+  sideRootRadiusFactor: 0.5
+  thickenTime: 6
+  material: {fileID: 2100000, guid: 5a8b3f72f6fa24b4b9ae15fbe9d74fa0, type: 2}
+  maxRoots: 60

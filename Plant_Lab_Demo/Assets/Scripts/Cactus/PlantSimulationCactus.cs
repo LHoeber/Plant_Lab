@@ -116,12 +116,15 @@ public partial class PlantSimulation
     /// it never flips while the segment grows or withers). On a paddle: a child from the edge lies in the paddle's plane,
     /// one from the flat side keeps the paddle's width direction.
     /// </summary>
-    static Quaternion AreoleFrame(Vector3 normal, Vector3 fullNormal)
+    /// H is turned from the normal toward the segment's own axis (its tip direction) by segmentChildUpwardDeg, at most
+    /// until it points along the axis (rotating toward y scales x and z alike, so the axis choice below stays the same).
+    Quaternion AreoleFrame(Vector3 normal, Vector3 fullNormal)
     {
+        Vector3 h = Vector3.RotateTowards(normal, Vector3.up, Settings.segmentChildUpwardDeg * Mathf.Deg2Rad, 0f);
         if (Mathf.Abs(fullNormal.z) <= Mathf.Abs(fullNormal.x))
-            return Frame(normal, Vector3.ProjectOnPlane(Vector3.forward, normal).normalized);//keep z (U)
-        Vector3 l = Vector3.ProjectOnPlane(Vector3.right, normal).normalized;//keep x (L)
-        return Frame(normal, Vector3.Cross(l, normal));
+            return Frame(h, Vector3.ProjectOnPlane(Vector3.forward, h).normalized);//keep z (U)
+        Vector3 l = Vector3.ProjectOnPlane(Vector3.right, h).normalized;//keep x (L)
+        return Frame(h, Vector3.Cross(l, h));
     }
 
     CactusSegment AddChildSegment(CactusSegment parent, PendingChild ch)

@@ -153,10 +153,11 @@ public class PanelBuilder : MonoBehaviour
         float s = Mathf.Min(L.arrows.width, L.arrows.height) / 3f;
         Vector2 ac = L.arrows.center;
         Arrows = new PanelButton[4];
-        Arrows[LabActions.CameraUp] = Arrow("CamUp", ac + new Vector2(0f, s), s, 0f);
-        Arrows[LabActions.CameraDown] = Arrow("CamDown", ac - new Vector2(0f, s), s, 180f);
-        Arrows[LabActions.CameraLeft] = Arrow("CamLeft", ac - new Vector2(s, 0f), s, 90f);
-        Arrows[LabActions.CameraRight] = Arrow("CamRight", ac + new Vector2(s, 0f), s, -90f);
+        float dx = s * L.arrowSpread.x, dy = s * L.arrowSpread.y;//distance of the arrows from the cross center
+        Arrows[LabActions.CameraUp] = Arrow("CamUp", ac + new Vector2(0f, dy), s, 0f);
+        Arrows[LabActions.CameraDown] = Arrow("CamDown", ac - new Vector2(0f, dy), s, 180f);
+        Arrows[LabActions.CameraLeft] = Arrow("CamLeft", ac - new Vector2(dx, 0f), s, 90f);
+        Arrows[LabActions.CameraRight] = Arrow("CamRight", ac + new Vector2(dx, 0f), s, -90f);
         for (int a = 0; a < 4; a++) Arrows[a].action = a;
 
         //pressing pushes a button into the panel (+z)

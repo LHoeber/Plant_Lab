@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6a100951605744ab5a908f8be9ae55ef, type: 3}
   m_Name: Bush_1
   m_EditorClassIdentifier: Assembly-CSharp::PlantSettings
+  roots: {fileID: 11400000, guid: 38b70476dcab34ef9b8a6bb4ee5c3d2e, type: 2}
   growingEnd: 0
   growingDuration: 60
   enableFlowering: 1
@@ -72,6 +73,12 @@ MonoBehaviour:
   lsAngle: 25
   leafSymbols: L
   flowerSymbols: K
+  cactusSegment: {fileID: 0}
+  segmentGrowDuration: 20
+  segmentChildThreshold: 0.7
+  segmentChildInterval: 3
+  segmentChildUpwardDeg: 0
+  segmentMaxTiltDeg: 10
   growthSpeed: 0.125
   maxLength: 2.14
   directionBias: 0

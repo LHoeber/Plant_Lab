@@ -1,5 +1,5 @@
 # Plant_Lab sync-out (written by Claude Code)
-last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-02
+last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-10
 
 ## Current state (max ~10 lines, overwritten at each sync out)
 - Unity 6000.5.10f1, URP, WebGL tablet target. One terrarium with one procedural plant (L-system development on the
@@ -13,8 +13,31 @@ last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-02
   contacts with slight tilt, deflating wither), grows in the editor; growth now drawn smoothly. Preset
   Paddle_Cactus_Plant (rules allow max 9 segments). Tufts: Blender model with several materials (spikes + fuzz). Open: segments stop for good within the 2.5 mm clearance gap
   (push along their axis, tilt can't free them), so their rules never run. Then step 4, between-plant collision later.
+- Roots/containers in progress: substrate volumes (SoilVolume, one closed mesh per container) queryable by the sim;
+  roots grow (RootSettings asset, gravity-steered, slide along container walls, spread away from root density and
+  stop at maxDensity). Next: surface adhesion outside soil (shared with climbers), substrate shaders.
 
 ## New entries, not yet transferred (newest first, 2 to 4 lines each)
+- 2026-11-11: Roots step 3 done: RootDensityGrid (sparse, m root per liter, trilinear), per plant for now. Growth x
+  (1 - (d/maxDensity)^exp), no side roots where full, spread = turn away from density gradient in soil x (1 - resistance).
+  Growing (Automatic) now also waits for roots that can still grow (capped by growingDuration). Gizmo: PlantGrowth.
+  showRootDensity. Headless: spread 3 vs 0 = +10 % horizontal spread, crowded case stalls 20/250 roots, 0.4 ms/step.
+- 2026-11-11: Roots step 2 done: RootSettings asset (PlantSettings.roots), roots = Branches with rootType in
+  sim.Roots (main roots from the base, side roots up to 2 levels, gravity-steered: gradual in soil, hanging in air,
+  rigid, Growing phase only), own mesh child "Roots (generated)". Fix: UnityObstacleField used ClosestPoint, which
+  fails on non-convex MeshColliders (container) -> ComputePenetration probe. Tested headless: roots slide along walls/floor.
+- 2026-11-11: Cactus: new PlantSettings.segmentChildUpwardDeg (0-90) turns children at areoles from the surface normal
+  toward the parent segment's axis (applied in AreoleFrame, so rules' turns still work relative to it). Default 0.
+  Roots: RootSettings as a separate asset (pluggable per plant); side roots reuse side-branch spawning. Root competition
+  between plants (shared density grid) needs a central lockstep stepper + root-shoot coupling: planned for later.
+- 2026-11-10: Roots/substrate design decided: substrate = closed mesh per container (SoilVolume), roots free in soil,
+  outside soil adhere to surfaces (contact within adhesion distance, else fall with gravity); spread drive = avoid root
+  density (shared grid, growth slows to 0 at max density, resistance attenuates); roots only in growing phase; climbers
+  later use the same adhesion with a light drive. Step 1 done: ISoilField, SoilVolume (mesh baked to column intervals,
+  ~14 ms), UnitySoilField, sim.Soil. Fixed PlantGrowth.Reset default layer name ("Obstacles"). Next: roots as branch type.
+- 2026-11-09: Panel: new PanelLayout.arrowSpread (Vector2, in arrow cells) sets the left/right and up/down distance
+  of the camera arrows separately; default (1.1, 0.55) = up/down close together, left/right further out. All panel
+  positions live in Assets/Settings/Panel/PanelLayout_Default.asset (rebuilds live, also in Play mode).
 - 2026-11-06: Tufts support models with several materials (Laura's spikes.fbx: fuzz icosphere with a transparent Shader
   Graph "Tuft" + cones "Spikes", joined in Blender). CactusSegmentSettings.TuftParts/TuftMaterials + TuftBuilder (one
   submesh per part); used by CactusVisuals, CactusSegmentPreview, LSystemPreview. Pitfalls: model imports 15 cm tall

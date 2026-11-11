@@ -53,9 +53,10 @@ MonoBehaviour:
   arrows:
     serializedVersion: 2
     x: 0.165
-    y: -0.215
+    y: -0.205
     width: 0.21
     height: 0.13
+  arrowSpread: {x: 1.1, y: 0.55}
   shutterTravel: 0.145
   buttonHeight: 0.012
   socketHeight: 0.004

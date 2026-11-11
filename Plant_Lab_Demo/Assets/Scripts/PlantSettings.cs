@@ -53,6 +53,11 @@ public class PlantSettings : ScriptableObject
     /// <summary>Leaves never get smaller than this fraction of maxLeafSize because of leafSizeFalloff. Not a setting.</summary>
     public const float MinLeafSizeFraction = 0.3f;
 
+    [Header("Roots")]
+    [Tooltip("Root system type (a Root Settings asset; several plants can share one). Empty: no roots. " +
+             "Changes take effect on regrow.")]
+    [NoRandomize] public RootSettings roots;
+
     [Header("Phases (fixed order: Growing -> Flowering -> Fruiting -> Withering)")]
     [Tooltip("Automatic: Growing ends when all branches have finished, or after growingDuration. " +
              "On Trigger: it ends only when triggered (PlantGrowth.TriggerNextPhase, e.g. from an intervention, " +
@@ -126,6 +131,9 @@ public class PlantSettings : ScriptableObject
     [LSystemOnly][Range(0f, 1f)] public float segmentChildThreshold = 0.7f;
     [Tooltip("Cactus: sim seconds between the children of one segment (they appear one after another, in rule order).")]
     [LSystemOnly][Range(0f, 30f)] public float segmentChildInterval = 3f;
+    [Tooltip("Cactus: children at an areole point away from the surface normal by this angle (degrees), turned toward " +
+             "the parent segment's axis (its tip direction). 0 = straight out of the surface.")]
+    [LSystemOnly][Range(0f, 90f)] public float segmentChildUpwardDeg = 0f;
     [Tooltip("Cactus: a segment touching the glass or an older segment first tilts at its attachment (then its parent " +
              "does), by up to this angle (degrees) each; what's left stops its growth until it's free again.")]
     [LSystemOnly][NoRandomize][Range(0f, 45f)] public float segmentMaxTiltDeg = 10f;
