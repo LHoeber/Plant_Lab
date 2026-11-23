@@ -1,9 +1,34 @@
 # Plant_Lab inbox (mirror from the claude.ai sync hub)
-Last updated: 2026-11-10 by the "PhD topic context" session. Read-only for Claude Code.
+Last updated: 2026-11-20 by the "PhD topic context" session. Read-only for Claude Code.
 Full design text: Notion "Experimental Prototype 2" -> section "Paradigm Structure".
 Plan until the first TAC meeting (mid-December): project doc claude/15-plan-until-tac.md (claude.ai project).
 
-## New (2026-11-08): first Stage 1 results -> the tables will still change
+## New (2026-11-20): MDP structure will be needed + Stage 1 world cleaned
+- All advisors converge: the paradigm must become an MDP, i.e. actions WITHIN a trial with lasting consequences
+  (e.g. buttons per growth phase on a persistent plant; maybe limited resources such as a water tank or per-plant
+  interventions - not decided). Don't build it yet, but keep the trial loop and effects layer open for decisions
+  during a trial (not only before Start). A PhD student working with children (with Zurna) may want to use the game
+  for bandit-vs-MDP experiments.
+- Stage 1 world now (plant_world.py): moisture (water up / heat down), root rot (roots visible only from below,
+  droop from the side), bugs = noisy TV (vent on: present with 50 % each tick, independent; visible only from a
+  TOP view -> camera gets 3 heights: low / level / high), bending (light; toward in growing/flowering, away in
+  fruiting). Removed: light speeds up growing, dry soil stalls/wilts the plant. Values still change.
+
+## (2026-11-19): shared world script + input mode + cost of seeing
+- Stage 1 world is now one Python script: RL_code_trials/Plant Laboratory/plant_world.py (variables + values,
+  parents, transition-table builders per effect, observation table variable x view x phase, camera ring + below,
+  configure(effects, params)). Treat it as the rule template for the effects layer (same structure: effect ->
+  variable, parents, probabilities). Values still change; do not hard-code them.
+- Stage 1 next: a notebook where the camera is the only choice (fixed condition, view-restricted observer), then
+  buttons per growth phase (plant persists) as a separate notebook. Mid-trial button presses may come back later.
+- From the VR colleague (19.11): she sends her Unity project + Windows build (useful reference for logging).
+  For an online PC study keyboard controls are probably better than on-screen buttons; instruct ONE input mode,
+  don't allow both. Keep the input mapping switchable (WebGL tablet target still open).
+- New design dimension: cost of information seeking. Labs can be harder or easier to observe (blur, occlusion by
+  bars/glass, small plants hidden behind larger ones, a camera that gets dirty after an action or as a start
+  condition). Plan the lab template so visibility degradation is a parameter (it maps onto the observation table).
+
+## (2026-11-08): first Stage 1 results -> the tables will still change
 - The Stage 1 notebook (tabular world with water / heat / light / vent, observation table, Dirichlet learner,
   4 drivers, pure-driver agents) runs. First result with full observation: the current world is learned within
   5 to 8 trials, so the drivers separate only weakly. The rules will be redesigned (slower or rarer effects,
@@ -75,5 +100,5 @@ Plan until the first TAC meeting (mid-December): project doc claude/15-plan-unti
 - Camera with several specimens: orbit centre vs. per plant still open (decides which views exist).
 
 ## Current builds (from your sync-out)
-- Cactus (2nd plant): grows in the editor; stutter fixed (05.11), multi-material tufts (06.11). Open: segments stuck
-  in the 2.5 mm clearance gap (fix proposed); then cactus beside the tree. Panel arrow spacing configurable (09.11).
+- Roots (10-11.11): substrate volumes per container, root branches with density grid. Cactus grows in the editor;
+  open: segments stuck in the 2.5 mm clearance gap. Panel arrow spacing configurable (09.11).

@@ -1,5 +1,5 @@
 # Plant_Lab sync-out (written by Claude Code)
-last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-10
+last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-19
 
 ## Current state (max ~10 lines, overwritten at each sync out)
 - Unity 6000.5.10f1, URP, WebGL tablet target. One terrarium with one procedural plant (L-system development on the
@@ -18,6 +18,13 @@ last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-10
   stop at maxDensity). Next: surface adhesion outside soil (shared with climbers), substrate shaders.
 
 ## New entries, not yet transferred (newest first, 2 to 4 lines each)
+- 2026-11-23: GrowLamp component (lamp root): on/off swaps material pairs (Led_on/off, inner box/glass) on the slots
+  that use the "on" materials (found while on, remembered) and toggles RectLampLights + their Lights; IsOn/Toggle/
+  Switched for later script control (effects layer). Spot highlight on glass removed via Rendering Layer "Glass".
+- 2026-11-22: Grow lamp (Laura's model): RectLampLight component + BotanicLab/LightBeam shader. Spot at the opening,
+  generated soft rectangle cookie, spot angle so the lit rectangle matches the beam at beamLength (corners at 95 % of
+  the cone radius, inner = outer angle); fake visible beam = additive truncated pyramid drawn per camera. URP has no
+  real-time rect lights; light from behind the lamp was rejected (lights the lamp body/anything in between).
 - 2026-11-11: Roots step 3 done: RootDensityGrid (sparse, m root per liter, trilinear), per plant for now. Growth x
   (1 - (d/maxDensity)^exp), no side roots where full, spread = turn away from density gradient in soil x (1 - resistance).
   Growing (Automatic) now also waits for roots that can still grow (capped by growingDuration). Gizmo: PlantGrowth.
