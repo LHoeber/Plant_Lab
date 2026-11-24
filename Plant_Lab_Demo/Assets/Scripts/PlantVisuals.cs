@@ -4,7 +4,8 @@ using UnityEngine;
 /// <summary>
 /// Turns the simulation into what you see: one mesh for all branches, one GameObject per leaf, flower and cactus segment.
 /// Reads the simulation, never changes it. Once the simulation says a leaf/flower has fully withered,
-/// it's handed over to Unity's physics and falls (not deterministic, on purpose).
+/// it's handed over to Unity's physics and falls, with a seeded tumble. During a trial the physics is stepped in
+/// lockstep with the ticks (TickClock), which makes the fall reproducible on the same platform.
 /// </summary>
 public class PlantVisuals
 {
@@ -54,7 +55,8 @@ public class PlantVisuals
     }
 
     /// <summary>Places the cactus segments and rebuilds the meshes of those that grew or withered visibly.</summary>
-    public void UpdateCactus(PlantSimulation sim) => cactus.Update(sim);
+    /// <param name="exact">Rebuild every outdated segment mesh now (no thresholds, no time budget), e.g. for a logged image.</param>
+    public void UpdateCactus(PlantSimulation sim, bool exact = false) => cactus.Update(sim, exact);
 
     public void RebuildMesh(PlantSimulation sim)
     {
@@ -150,7 +152,8 @@ public class PlantVisuals
         TubeMesh.Append(pts, radii, pointColors, PlantSettings.RadialSegments, arc, verts, norms, uvs, colors, tris);
     }
 
-    public void UpdateLeaves(PlantSimulation sim)
+    /// <param name="exact">Apply even the smallest color changes (otherwise skipped below a visible threshold), e.g. for a logged image.</param>
+    public void UpdateLeaves(PlantSimulation sim, bool exact = false)
     {
         PlantSettings s = sim.Settings;
         //create visuals for leaves spawned since the last frame
@@ -190,12 +193,73 @@ public class PlantVisuals
             v.t.localScale = Vector3.one * sim.LeafSize(leaf);
 
             float w = sim.LeafWither(leaf);
-            v.ApplyWither(w, s);
-            if (w >= 1f) v.Detach(s);//fully withered: falls off
+            v.ApplyWither(w, s, exact);
+            if (w >= 1f) v.Detach(s, OrganSeed(sim, i, false));//fully withered: falls off
         }
     }
 
-    public void UpdateFlowers(PlantSimulation sim)
+    /// <summary>
+    /// Seed of an organ's falling tumble: from the plant's seed and the organ's index (creation order), so the same
+    /// plant always drops the same organ the same way.
+    /// </summary>
+    static int OrganSeed(PlantSimulation sim, int index, bool flower) =>
+        unchecked(sim.Root.seed * 486187739 + index * 7919 + (flower ? 104729 : 0) + 17);
+
+    /// <summary>
+    /// Only detaches the organs that have fully withered by now (after placing them exactly where the simulation
+    /// has them). Called after every simulation step while a trial runs (TickClock), so organs start falling at a
+    /// fixed simulation step, not whenever the next frame happens: the physics afterwards is then reproducible.
+    /// </summary>
+    public void DetachWithered(PlantSimulation sim)
+    {
+        PlantSettings s = sim.Settings;
+        for (int i = 0; i < leafVisuals.Count && i < sim.Leaves.Count; i++)
+        {
+            OrganVisual v = leafVisuals[i];
+            if (v == null || v.t == null || v.detached) continue;
+            Leaf leaf = sim.Leaves[i];
+            if (sim.LeafWither(leaf) < 1f) continue;
+            v.t.localPosition = sim.LeafBasePos(leaf);
+            v.t.localRotation = sim.LeafRotationNow(leaf);
+            v.t.localScale = Vector3.one * sim.LeafSize(leaf);
+            v.ApplyWither(1f, s);
+            v.Detach(s, OrganSeed(sim, i, false));
+        }
+        for (int i = 0; i < flowerVisuals.Count && i < sim.Flowers.Count; i++)
+        {
+            OrganVisual v = flowerVisuals[i];
+            if (v == null || v.t == null || v.detached) continue;
+            Flower flower = sim.Flowers[i];
+            if (sim.FlowerWither(flower) < 1f) continue;
+            v.t.localPosition = sim.FlowerPosition(flower);
+            v.t.localRotation = sim.FlowerRotation(flower);
+            if (v.morph != null)
+                v.morph.SetGrowth(v.morph.GrowthFor(sim.FlowerGrowth(flower), sim.FruitProgress(flower)), sim.FlowerSize(flower));
+            v.ApplyWither(1f, s);
+            v.Detach(s, OrganSeed(sim, i, true));
+        }
+    }
+
+    /// <summary>Fallen (physics-driven) organs: how many, and their positions and rotations mixed into a hash (for logging).</summary>
+    public int HashFallen(ref ulong hash)
+    {
+        int n = 0;
+        foreach (List<OrganVisual> list in new[] { leafVisuals, flowerVisuals })
+            foreach (OrganVisual v in list)
+            {
+                if (v == null || v.t == null || !v.detached) continue;
+                n++;
+                //the physics body's own pose (not the Transform, which rendering may have moved in between)
+                Rigidbody rb = v.t.GetComponent<Rigidbody>();
+                Vector3 p = rb != null ? rb.position : v.t.position;
+                Quaternion q = rb != null ? rb.rotation : v.t.rotation;
+                StateHash.Add(ref hash, p.x); StateHash.Add(ref hash, p.y); StateHash.Add(ref hash, p.z);
+                StateHash.Add(ref hash, q.x); StateHash.Add(ref hash, q.y); StateHash.Add(ref hash, q.z); StateHash.Add(ref hash, q.w);
+            }
+        return n;
+    }
+
+    public void UpdateFlowers(PlantSimulation sim, bool exact = false)
     {
         PlantSettings s = sim.Settings;
         //create visuals for flowers spawned since the last frame
@@ -234,8 +298,8 @@ public class PlantVisuals
                                   sim.FlowerSize(flower));
 
             float w = sim.FlowerWither(flower);
-            v.ApplyWither(w, s);
-            if (w >= 1f) v.Detach(s);
+            v.ApplyWither(w, s, exact);
+            if (w >= 1f) v.Detach(s, OrganSeed(sim, i, true));
         }
     }
 
@@ -339,11 +403,11 @@ public class PlantVisuals
         }
 
         /// <summary>Discolors all materials of this organ (0 = fresh, 1 = fully withered).</summary>
-        public void ApplyWither(float w, PlantSettings s)
+        public void ApplyWither(float w, PlantSettings s, bool exact = false)
         {
             //flowers handle their colors themselves (ripening fruit colors + withering on top)
             if (morph != null) { morph.SetWither(w, s); return; }
-            if (Mathf.Abs(w - appliedWither) < 0.002f) return;//no visible change
+            if (exact ? w == appliedWither : Mathf.Abs(w - appliedWither) < 0.002f) return;//no (visible) change
             appliedWither = w;
             if (block == null) block = new MaterialPropertyBlock();
             for (int r = 0; r < renderers.Length; r++)
@@ -356,7 +420,7 @@ public class PlantVisuals
         }
 
         /// <summary>Hands the organ over to Unity's physics: it falls, tumbles and comes to rest on the ground.</summary>
-        public void Detach(PlantSettings s)
+        public void Detach(PlantSettings s, int seed)
         {
             if (detached) return;
             detached = true;
@@ -375,12 +439,17 @@ public class PlantVisuals
             rb.mass = 0.01f;
             rb.linearDamping = PlantSettings.FallDamping;        //air resistance: slow, floaty fall
             rb.angularDamping = PlantSettings.FallAngularDamping;
-            rb.angularVelocity = Random.insideUnitSphere * 0.4f;//a slight initial tumble (physics part isn't deterministic anyway)
+            //a slight initial tumble, seeded per organ (with the physics stepped in lockstep with the ticks, see TickClock,
+            //the fall is then reproducible on the same platform)
+            var r = new System.Random(seed);
+            var tumble = new Vector3(PlantSimulation.Gaussian(r), PlantSimulation.Gaussian(r), PlantSimulation.Gaussian(r));
+            rb.angularVelocity = tumble.normalized * (0.4f * Mathf.Pow((float)r.NextDouble(), 1f / 3f));
             //if it overlaps something when detaching (e.g. a neighbor that detached at the same moment), separate gently:
             //Unity's default pushes overlapping bodies apart at up to 10 m/s, which made leaves visibly jump
             rb.maxDepenetrationVelocity = 0.1f;
-            //smooth motion between physics steps (physics runs at a fixed rate, the screen doesn't)
-            rb.interpolation = RigidbodyInterpolation.Interpolate;
+            //no interpolation: it moves the visible object between physics steps by frame time, which would make what's
+            //drawn (and logged) depend on the frame rate. Physics runs at 50 steps per second, smooth enough
+            rb.interpolation = RigidbodyInterpolation.None;
         }
 
         /// <summary>Bounding box of all its renderers as they look right now, in this organ's own local space.</summary>
@@ -421,7 +490,9 @@ public class PlantVisuals
 
         public void Destroy()
         {
-            if (t != null) Object.Destroy(t.gameObject);
+            if (t == null) return;
+            t.gameObject.SetActive(false);//gone right away (Destroy only happens at the end of the frame)
+            Object.Destroy(t.gameObject);
         }
     }
 }

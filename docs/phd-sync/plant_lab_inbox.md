@@ -1,5 +1,5 @@
 # Plant_Lab inbox (mirror from the claude.ai sync hub)
-Last updated: 2026-11-20 by the "PhD topic context" session. Read-only for Claude Code.
+Last updated: 2026-11-24 by the "PhD topic context" session. Read-only for Claude Code.
 Full design text: Notion "Experimental Prototype 2" -> section "Paradigm Structure".
 Plan until the first TAC meeting (mid-December): project doc claude/15-plan-until-tac.md (claude.ai project).
 

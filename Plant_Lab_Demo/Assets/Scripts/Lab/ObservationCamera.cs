@@ -35,6 +35,9 @@ public class ObservationCamera : MonoBehaviour
     Camera cam;
 
     float startAzimuth, startElevation;
+    /// <summary>The starting view (every trial starts here).</summary>
+    public float StartAzimuth => startAzimuth;
+    public float StartElevation => startElevation;
 
     /// <summary>Back to the starting view, immediately (no glide): every trial starts from the same view.</summary>
     public void ResetView()
@@ -77,6 +80,40 @@ public class ObservationCamera : MonoBehaviour
             case LabActions.CameraUp: elevation += stepDeg; break;
             case LabActions.CameraDown: elevation -= stepDeg; break;
         }
+    }
+
+    /// <summary>
+    /// Renders the observation right now, at the stepped (logged) view rather than mid-glide, and returns it as a
+    /// new texture (the caller destroys it). For logged probe images: what a replay would render at this state.
+    /// </summary>
+    public Texture2D Capture()
+    {
+        float az = shownAzimuth, el = shownElevation;
+        shownAzimuth = azimuth;
+        shownElevation = elevation;
+        Place();
+        var rt = RenderTexture.GetTemporary(width, height, 24, RenderTextureFormat.ARGB32);
+        var request = new UnityEngine.Rendering.RenderPipeline.StandardRequest { destination = rt };
+        if (UnityEngine.Rendering.RenderPipeline.SupportsRenderRequest(cam, request))
+            UnityEngine.Rendering.RenderPipeline.SubmitRenderRequest(cam, request);
+        else
+        {
+            RenderTexture old = cam.targetTexture;
+            cam.targetTexture = rt;
+            cam.Render();
+            cam.targetTexture = old;
+        }
+        RenderTexture previous = RenderTexture.active;
+        RenderTexture.active = rt;
+        var tex = new Texture2D(width, height, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+        tex.Apply(false);
+        RenderTexture.active = previous;
+        RenderTexture.ReleaseTemporary(rt);
+        shownAzimuth = az;
+        shownElevation = el;
+        Place();
+        return tex;
     }
 
     void LateUpdate()

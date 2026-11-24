@@ -13,7 +13,9 @@ using UnityEngine;
 ///              camera offline, shutter opens, next row.
 ///   Finished:  all trials done.
 /// Outside a trial the arrows only show a hint, and the world is paused.
-/// For an agent/logging: History (the LED grid as numbers), RemainingTime, CurrentSelection, TrialStarted/TrialEnded.
+/// A trial lasts exactly TrialTicks ticks of the TickClock (trialSeconds / tickLength), which also steps the world.
+/// For an agent/logging: History (the LED grid as numbers), RemainingTime, CurrentSelection, SelectionOrder, and the
+/// events TrialStarted/TrialEnded, PhaseChanged, HelpToggled, ArrowRefused, ArrowOutsideTrial.
 /// </summary>
 [DefaultExecutionOrder(100)]//after PanelBuilder and Console3D
 public class TrialController : MonoBehaviour
@@ -42,7 +44,12 @@ public class TrialController : MonoBehaviour
     [Tooltip("Seconds the shutter takes to slide.")]
     public float shutterTime = 0.25f;
 
-    public Phase CurrentPhase { get; private set; }
+    public Phase CurrentPhase
+    {
+        get => phase;
+        private set { if (value == phase) return; phase = value; PhaseChanged?.Invoke(value); }
+    }
+    Phase phase;
     /// <summary>The current trial (0-based): the one being chosen, logged in or running.</summary>
     public int TrialIndex { get; private set; }
     public float RemainingTime { get; private set; }
@@ -53,8 +60,21 @@ public class TrialController : MonoBehaviour
 
     /// <summary>A trial started: (trial index, buttons on).</summary>
     public event Action<int, bool[]> TrialStarted;
-    /// <summary>A trial ended: (trial index).</summary>
+    /// <summary>A trial ended: (trial index). The world is still in its final state here.</summary>
     public event Action<int> TrialEnded;
+    /// <summary>The workflow phase changed (Selecting, Ready, Running, Finished).</summary>
+    public event Action<Phase> PhaseChanged;
+    /// <summary>"?" was pressed: (instructions now open).</summary>
+    public event Action<bool> HelpToggled;
+    /// <summary>A camera arrow was pressed during a trial but refused: (action, reason).</summary>
+    public event Action<int, string> ArrowRefused;
+    /// <summary>A camera arrow was pressed outside a trial (shows the "not accessible" hint): (action).</summary>
+    public event Action<int> ArrowOutsideTrial;
+
+    /// <summary>The switched-on buttons in the order they were switched on (oldest first).</summary>
+    public IReadOnlyList<int> SelectionOrder => pressOrder;
+    /// <summary>Ticks per trial.</summary>
+    public int TrialTicks => clock != null ? Mathf.Max(1, Mathf.RoundToInt(config.trialSeconds / clock.tickLength)) : 1;
 
     bool[] selection = new bool[0];
     readonly List<int> pressOrder = new List<int>();//switched-on buttons, oldest first
@@ -74,10 +94,16 @@ public class TrialController : MonoBehaviour
     {
         //one config for the whole panel: the one the panel is built from
         if (panel != null && panel.config != null) config = panel.config;
-        if (plants.Count == 0) plants.AddRange(FindObjectsByType<PlantGrowth>());
+        if (plants.Count == 0)
+        {
+            plants.AddRange(FindObjectsByType<PlantGrowth>(FindObjectsSortMode.None));
+            //a fixed order (by place in the hierarchy): the order plants are stepped and logged in
+            plants.Sort((a, b) => string.CompareOrdinal(HierarchyPath(a.transform), HierarchyPath(b.transform)));
+        }
         screenTex = PixelFont.MakeTexture(new Color32[ScreenW * ScreenH], ScreenW, ScreenH, "Screen texts");
         screenPx = new Color32[ScreenW * ScreenH];
         if (panel != null) panel.Rebuilt += Wire;
+        if (clock != null) clock.AfterTickEnded += OnTickEnded;
         Wire();
         ResetSession();
     }
@@ -160,7 +186,8 @@ public class TrialController : MonoBehaviour
         foreach (PlantGrowth p in plants)
             if (p != null) { p.enabled = true; p.ResetPlant(); }
         if (observationCamera != null) observationCamera.ResetView();
-        if (clock != null) clock.enabled = true;
+        //the clock steps the world from now on (in lockstep with the ticks: reproducible)
+        if (clock != null) clock.BeginTrial(plants);
         TrialStarted?.Invoke(TrialIndex, (bool[])selection.Clone());
         return true;
     }
@@ -169,6 +196,7 @@ public class TrialController : MonoBehaviour
     {
         if (CurrentPhase == Phase.Running) return false;//not during a trial
         helpOpen = !helpOpen;
+        HelpToggled?.Invoke(helpOpen);
         return true;
     }
 
@@ -177,11 +205,17 @@ public class TrialController : MonoBehaviour
         if (CurrentPhase != Phase.Running)
         {
             hintUntil = Time.time + hintSeconds;
+            ArrowOutsideTrial?.Invoke(action);
             return true;
         }
         //at the elevation limit, or a camera action was already taken in this tick: refused
-        if (observationCamera == null || !observationCamera.CanStep(action)) return false;
-        if (clock != null && !clock.Submit(action)) return false;
+        if (observationCamera == null || !observationCamera.CanStep(action))
+        {
+            if (clock != null) clock.ReportRefused();
+            ArrowRefused?.Invoke(action, "limit");
+            return false;
+        }
+        if (clock != null && !clock.Submit(action)) { ArrowRefused?.Invoke(action, "tick_taken"); return false; }
         observationCamera.Step(action);
         return true;
     }
@@ -191,22 +225,26 @@ public class TrialController : MonoBehaviour
     void Update()
     {
         if (config == null || panel == null) return;
-        if (CurrentPhase == Phase.Running)
-        {
-            RemainingTime -= Time.deltaTime;
-            if (RemainingTime <= 0f) EndTrial();
-        }
+        //remaining time follows the ticks (the trial ends on its last tick, see OnTickEnded)
+        if (CurrentPhase == Phase.Running && clock != null)
+            RemainingTime = Mathf.Max(0f, (TrialTicks - clock.Tick - clock.TickFraction) * clock.tickLength);
         UpdateShutter();
         UpdateLights();
         UpdateScreen();
         panel.SetTimer(CurrentPhase == Phase.Running ? RemainingTime / Mathf.Max(0.01f, config.trialSeconds) : 1f);
     }
 
+    void OnTickEnded(int tick, int action)
+    {
+        if (CurrentPhase == Phase.Running && tick + 1 >= TrialTicks) EndTrial();
+    }
+
     void EndTrial()
     {
         RemainingTime = 0f;
+        if (clock != null) clock.EndTrial();
+        TrialEnded?.Invoke(TrialIndex);//world still in its final state (logging takes its last picture here)
         PauseWorld();
-        TrialEnded?.Invoke(TrialIndex);
         TrialIndex++;
         Array.Clear(selection, 0, selection.Length);
         pressOrder.Clear();
@@ -279,9 +317,18 @@ public class TrialController : MonoBehaviour
         m.SetTexture(UITexId, screenTex);
     }
 
+    /// <summary>Path of an object in the hierarchy (e.g. "Terrarium/Plant A"), with sibling indices against equal names.</summary>
+    public static string HierarchyPath(Transform t)
+    {
+        string path = $"{t.name}#{t.GetSiblingIndex()}";
+        for (Transform p = t.parent; p != null; p = p.parent) path = $"{p.name}#{p.GetSiblingIndex()}/{path}";
+        return path;
+    }
+
     void OnDestroy()
     {
         if (panel != null) panel.Rebuilt -= Wire;
+        if (clock != null) clock.AfterTickEnded -= OnTickEnded;
         if (screenTex != null) Destroy(screenTex);
     }
 }

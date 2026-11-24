@@ -27,3 +27,5 @@
 # Misc
 sysinfo.txt
 crashlytics-build.properties
+# session data (participant logs, never commit)
+/SessionLogs/

@@ -64,6 +64,44 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
     /// <summary>The current simulation (read-only access for other scripts, e.g. logging).</summary>
     public PlantSimulation Simulation => sim;
 
+    /// <summary>The visuals (read-only access, e.g. for logging fallen organs).</summary>
+    public PlantVisuals Visuals => visuals;
+
+    // --- driven by the tick clock (during a trial) ---
+
+    bool driven;
+
+    /// <summary>
+    /// Driven = the TickClock steps this plant (StepOnce) in lockstep with the ticks, instead of this component
+    /// stepping by frame time. Then every tick ends in exactly the same state, however fast the computer is.
+    /// </summary>
+    public void SetDriven(bool on) => driven = on;
+
+    /// <summary>One simulation step (DeltaT), plus detaching organs that withered in it (for reproducible falls).</summary>
+    public void StepOnce()
+    {
+        if (sim == null) return;
+        sim.LightTarget = lightSource != null ? transform.InverseTransformPoint(lightSource.position) : (Vector3?)null;
+        if (sim.Step(PlantSettings.DeltaT)) meshDirty = true;
+        visuals.DetachWithered(sim);
+    }
+
+    /// <summary>
+    /// Brings the visuals up to the current simulation state right now. exact: also below the usual update thresholds
+    /// and without time budgets, so what's drawn is exactly the state (for logged images; a replay renders the same).
+    /// </summary>
+    public void RefreshVisuals(bool exact = false)
+    {
+        if (sim == null) return;
+        if (meshDirty || exact) { visuals.RebuildMesh(sim); meshDirty = false; }
+        visuals.UpdateLeaves(sim, exact);
+        visuals.UpdateFlowers(sim, exact);
+        visuals.UpdateCactus(sim, exact);
+    }
+
+    /// <summary>Simulation steps per tick for this plant (its simSpeed decides how much plant time a tick is).</summary>
+    public int StepsPerTick(float tickLength) => Mathf.Max(1, Mathf.RoundToInt(tickLength * simSpeed / PlantSettings.DeltaT));
+
     /// <summary>The settings actually used: the randomized copy if there is one, otherwise the asset.</summary>
     public PlantSettings ActiveSettings => randomizedSettings != null ? randomizedSettings : settings;
 
@@ -250,6 +288,16 @@ public class PlantGrowth : MonoBehaviour// inheritance makes this class a compon
 
         //inverseTransform transforms the light source's global position to local relative to plant origin
         sim.LightTarget = lightSource != null ? transform.InverseTransformPoint(lightSource.position) : (Vector3?)null;
+
+        if (driven)
+        {
+            //the TickClock steps the simulation; only the visuals are updated here
+            simLoad = "driven by the tick clock";
+            if (s.Version != settingsVersion) { settingsVersion = s.Version; meshDirty = true; }
+            currentPhase = sim.Phase;
+            RefreshVisuals();
+            return;
+        }
 
         //deltaTime is the actual time since last frame -> can vary depending on actual FPS
         //simulated time, that has passed in the real world, but wasn't simulated yet

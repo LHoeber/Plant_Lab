@@ -1,5 +1,5 @@
 # Plant_Lab sync-out (written by Claude Code)
-last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-19
+last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-24
 
 ## Current state (max ~10 lines, overwritten at each sync out)
 - Unity 6000.5.10f1, URP, WebGL tablet target. One terrarium with one procedural plant (L-system development on the
@@ -8,7 +8,8 @@ last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-19
   simple placeholder blocks for now (Blender parts can replace them). Trial workflow implemented (TrialController):
   select (max 2, FIFO) -> shutter -> Start -> camera feed + timer -> camera offline -> next LED row.
 - Not built yet: plant responses to the buttons (effects layer, hidden state), lab template with several specimens,
-  logging, agent interface. Classic plant development still switchable (to be removed).
+  replay renderer, online deployment (plan: WebGL + JATOS + Prolific), agent interface.
+- Logging v1 (SessionLogger, JSON Lines per session) and a deterministic trial world (TickClock lockstep) work locally. Classic plant development still switchable (to be removed).
 - Cactus: segments in the plant simulation (growth, children at areoles after X % size, flowers, glass/segment
   contacts with slight tilt, deflating wither), grows in the editor; growth now drawn smoothly. Preset
   Paddle_Cactus_Plant (rules allow max 9 segments). Tufts: Blender model with several materials (spikes + fuzz). Open: segments stop for good within the 2.5 mm clearance gap
@@ -18,6 +19,13 @@ last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-19
   stop at maxDensity). Next: surface adhesion outside soil (shared with climbers), substrate shaders.
 
 ## New entries, not yet transferred (newest first, 2 to 4 lines each)
+- 2026-11-24: Logging v1 + determinism. SessionLogger writes SessionLogs/<participant>_s<n>_<utc>/: session.json,
+  trials.jsonl, ticks.jsonl (per tick in trials: action, view, per-plant summary + state hash, physics hash, lamps),
+  events.jsonl, start/end JPEGs. TickClock now steps plants + physics in lockstep (25 substeps/tick, Physics Script
+  mode), trial = exactly N ticks, waitForAction for agents. Test player 60 vs 15 fps: all ticks + images byte-identical.
+  Pitfalls fixed: frame-time sim + backlog drop, unseeded organ tumble, rigidbody interpolation, cactus mesh rebuild
+  thresholds, destroyed organs visible for one frame. Open: SSAO noise changes per frame (images not reproducible
+  with it on); cross-platform (WebGL vs native) equality not guaranteed, hashes detect divergence.
 - 2026-11-23: GrowLamp component (lamp root): on/off swaps material pairs (Led_on/off, inner box/glass) on the slots
   that use the "on" materials (found while on, remembered) and toggles RectLampLights + their Lights; IsOn/Toggle/
   Switched for later script control (effects layer). Spot highlight on glass removed via Rendering Layer "Glass".

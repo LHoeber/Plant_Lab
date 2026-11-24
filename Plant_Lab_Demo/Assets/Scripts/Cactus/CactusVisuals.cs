@@ -39,7 +39,9 @@ public class CactusVisuals
 
     public CactusVisuals(Transform root) { this.root = root; }
 
-    public void Update(PlantSimulation sim)
+    /// <param name="exact">Rebuild every segment whose mesh isn't exactly the current state, all at once (no step
+    /// threshold, no time budget): what's drawn is then exactly the simulation state, e.g. for a logged image.</param>
+    public void Update(PlantSimulation sim, bool exact = false)
     {
         CactusSegmentSettings type = sim.Settings.cactusSegment;
         if (type == null) return;
@@ -58,12 +60,14 @@ public class CactusVisuals
             e.t.localScale = new Vector3(stretch.x, stretch.y, stretch.x) * c.size;
             bool changed = e.shownVersion != type.Version || e.shownOccupied != c.occupied.Count
                            || (g >= 1f && e.shownGrowth < 1f) || (w >= 1f && e.shownWither < 1f);//the last step always shows
-            if (changed || Mathf.Abs(g - e.shownGrowth) >= RebuildStep || Mathf.Abs(w - e.shownWither) >= RebuildStep) outdated.Add(i);
+            bool due = exact ? g != e.shownGrowth || w != e.shownWither
+                             : Mathf.Abs(g - e.shownGrowth) >= RebuildStep || Mathf.Abs(w - e.shownWither) >= RebuildStep;
+            if (changed || due) outdated.Add(i);
         }
         //never-built ones first, then the most outdated
         outdated.Sort((a, b) => Outdatedness(sim, b).CompareTo(Outdatedness(sim, a)));
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        for (int k = 0; k < outdated.Count && (k == 0 || clock.Elapsed.TotalMilliseconds < RebuildBudgetMs); k++)
+        for (int k = 0; k < outdated.Count && (exact || k == 0 || clock.Elapsed.TotalMilliseconds < RebuildBudgetMs); k++)
             Rebuild(sim, type, outdated[k]);
     }
 
@@ -126,7 +130,7 @@ public class CactusVisuals
     {
         foreach (Entry e in entries)
         {
-            if (e.t != null) Object.Destroy(e.t.gameObject);
+            if (e.t != null) { e.t.gameObject.SetActive(false); Object.Destroy(e.t.gameObject); }//gone right away
             Object.Destroy(e.bodyMesh);
             Object.Destroy(e.tuftMesh);
         }
