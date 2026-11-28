@@ -53,6 +53,11 @@ public class TickClock : MonoBehaviour
     public event Action<int, int> TickEnded;
     /// <summary>After TickEnded (flow control, e.g. ending the trial after its last tick).</summary>
     public event Action<int, int> AfterTickEnded;
+    /// <summary>
+    /// Every substep during a trial, after the plants' steps and before physics: (substep length in s).
+    /// Effects (LabEffect) advance here, so they run in the same lockstep as the plants. Tick = the current tick.
+    /// </summary>
+    public event Action<float> Substepped;
 
     readonly List<PlantGrowth> plants = new List<PlantGrowth>();
     int[] stepsPerTick = new int[0];
@@ -153,6 +158,7 @@ public class TickClock : MonoBehaviour
                 int want = stepsPerTick[i] * k / physicsStepsPerTick;//integer: the steps are distributed exactly
                 while (stepsDone[i] < want) { plants[i].StepOnce(); stepsDone[i]++; }
             }
+            Substepped?.Invoke(physicsDt);
             Physics.Simulate(physicsDt);
             substepsDone = k;
             if (budget && watch.Elapsed.TotalMilliseconds > frameBudgetMs) break;

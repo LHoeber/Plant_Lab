@@ -1,7 +1,23 @@
 # Plant_Lab inbox (mirror from the claude.ai sync hub)
-Last updated: 2026-11-24 by the "PhD topic context" session. Read-only for Claude Code.
+Last updated: 2026-11-25 by the "PhD topic context" session. Read-only for Claude Code.
 Full design text: Notion "Experimental Prototype 2" -> section "Paradigm Structure".
 Plan until the first TAC meeting (mid-December): project doc claude/15-plan-until-tac.md (claude.ai project).
+
+## New (2026-11-25): second bug source + what to build (and what not)
+- plant_world.py has a new effect bug_variety: while the vent is on, one of N bug types (default 6, parameter
+  n_bug_types) appears at random every tick, visible ONLY from the BACK view. The on/off bugs stay, visible ONLY
+  from the TOP. Both depend on the vent, so both appear in the same trial (two different "noisy TV" sources).
+- Rule against distraction: build only what exists in plant_world.py (variables, buttons, views, visibility) or in
+  a row of the Notion scenario DB. Parked: coloured light, levers, several plants, buttons per phase (Seq),
+  limited samples, source room, VR, sound.
+- Hard part 1, probabilistic visibility: some variables are visible with p = 0.3 from a view (observation table).
+  The render needs a per-tick random mechanism that matches it (e.g. leaves randomly covering, short glimpses),
+  and the log must record which variables were actually visible each tick.
+- Hard part 2, flying bugs: keep each bug kind inside its view zone (top leaves / behind the pot), otherwise they
+  are visible from other views and break the table. Visuals = function of bug state + seed.
+- Logging v1 is great. For fitting the view-restricted ideal observer to humans, per tick also needed: the true
+  hidden state as plant_world variables (not only a hash), the visible mask, camera position + view, condition,
+  decision time.
 
 ## New (2026-11-20): MDP structure will be needed + Stage 1 world cleaned
 - All advisors converge: the paradigm must become an MDP, i.e. actions WITHIN a trial with lasting consequences
@@ -100,5 +116,6 @@ Plan until the first TAC meeting (mid-December): project doc claude/15-plan-unti
 - Camera with several specimens: orbit centre vs. per plant still open (decides which views exist).
 
 ## Current builds (from your sync-out)
+- Logging v1 + deterministic TickClock (24.11), grow lamp on/off (22-23.11).
 - Roots (10-11.11): substrate volumes per container, root branches with density grid. Cactus grows in the editor;
   open: segments stuck in the 2.5 mm clearance gap. Panel arrow spacing configurable (09.11).

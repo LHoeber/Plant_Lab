@@ -7,10 +7,13 @@ using UnityEngine;
 
 /// <summary>
 /// Writes one folder per session (format "plantlab-log", version 1):
-///   session.json  - who/what/how: participant, study, lab, build, settings of clock, panel, camera, plants, lamps;
+///   session.json  - who/what/how: participant, study, lab, build, settings of clock, panel, camera, plants, lamps,
+///                   effects (and which button triggers which);
 ///                   rewritten at the end with the end time and the number of completed trials.
-///   trials.jsonl  - one line per completed trial: choice (buttons on, and their order), "?" presses, timing, images.
-///   ticks.jsonl   - one line per tick during trials: action, camera view, world state (per plant, lamps).
+///   trials.jsonl  - one line per completed trial: choice (buttons on, and their order), "?" presses, timing, images,
+///                   effects (on, seed).
+///   ticks.jsonl   - one line per tick during trials: action, camera view, world state (per plant, lamps,
+///                   effects).
 ///   events.jsonl  - everything else, with exact time: phase changes, "?", refused/blocked arrows, focus loss,
 ///                   slow ticks, trial start/end, session start/end.
 ///   images/       - the observation at the start and end of every trial (JPEG; probes to check replays against).
@@ -55,6 +58,7 @@ public class SessionLogger : MonoBehaviour
     StreamWriter ticksOut, trialsOut, eventsOut;
     readonly List<PlantGrowth> plants = new List<PlantGrowth>();
     GrowLamp[] lamps = new GrowLamp[0];
+    LabEffect[] effects = new LabEffect[0];
     string sessionId;
     DateTime startUtc;
     double wallStart;
@@ -69,6 +73,7 @@ public class SessionLogger : MonoBehaviour
     bool[] selection;
     int[] selectionOrder;
     string startImage;
+    List<Json> trialEffects;
 
     double Wall => Time.realtimeSinceStartupAsDouble - wallStart;
 
@@ -88,6 +93,8 @@ public class SessionLogger : MonoBehaviour
         foreach (PlantGrowth p in trials.plants) if (p != null) plants.Add(p);
         lamps = FindObjectsByType<GrowLamp>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         Array.Sort(lamps, (a, b) => string.CompareOrdinal(TrialController.HierarchyPath(a.transform), TrialController.HierarchyPath(b.transform)));
+        effects = LabEffect.All.ToArray();
+        Array.Sort(effects, (a, b) => string.CompareOrdinal(TrialController.HierarchyPath(a.transform), TrialController.HierarchyPath(b.transform)));
 
         wallStart = Time.realtimeSinceStartupAsDouble;
         startUtc = DateTime.UtcNow;
@@ -163,7 +170,8 @@ public class SessionLogger : MonoBehaviour
             .Add("view", View())
             .Add("ticksLeft", trials.TrialTicks - (tick + 1))
             .Add("plants", PlantStates())
-            .Add("lamps", LampStates());
+            .Add("lamps", LampStates())
+            .Add("effects", EffectStates());
         ticksOut.WriteLine(j.ToString());
         ticksOut.Flush();
         if (duration > slowTickFactor * clock.tickLength)
@@ -202,6 +210,23 @@ public class SessionLogger : MonoBehaviour
         }
     }
 
+    IEnumerable<Json> EffectStates()
+    {
+        foreach (LabEffect e in effects)
+        {
+            if (e == null) { yield return null; continue; }
+            var j = new Json();
+            e.LogState(j);
+            yield return j;
+        }
+    }
+
+    IEnumerable<Json> EffectTrialInfo()
+    {
+        foreach (LabEffect e in effects)
+            yield return e == null ? null : new Json().Add("on", e.On).Add("seed", e.TrialSeed);
+    }
+
     IEnumerable<bool> LampStates()
     {
         foreach (GrowLamp l in lamps) yield return l != null && l.IsOn;
@@ -217,6 +242,7 @@ public class SessionLogger : MonoBehaviour
         refusedInTrial = 0;
         selection = buttonsOn;
         selectionOrder = new List<int>(trials.SelectionOrder).ToArray();
+        trialEffects = new List<Json>(EffectTrialInfo());//effects were reset for this trial before this handler
         startImage = SaveImage($"t{trial:000}_start.jpg");
         Event("trial_start", e => e.Add("selection", selection).Add("order", selectionOrder));
     }
@@ -236,6 +262,7 @@ public class SessionLogger : MonoBehaviour
             .Add("end", Math.Round(end, 6))
             .Add("ticks", clock.Tick)
             .Add("refused", refusedInTrial)
+            .Add("effects", trialEffects)
             .Add("startImage", startImage)
             .Add("endImage", endImage);
         trialsOut.WriteLine(j.ToString());
@@ -304,7 +331,8 @@ public class SessionLogger : MonoBehaviour
             .Add("panel", PanelInfo())
             .Add("camera", CameraInfo())
             .Add("plants", PlantInfo())
-            .Add("lamps", LampInfo());
+            .Add("lamps", LampInfo())
+            .Add("effects", EffectInfo());
         File.WriteAllText(Path.Combine(SessionFolder, "session.json"), j.ToString() + "\n", new UTF8Encoding(false));
     }
 
@@ -322,7 +350,6 @@ public class SessionLogger : MonoBehaviour
             .Add("trials", c.trials)
             .Add("trialSeconds", c.trialSeconds);
         //positions of the effect buttons on the panel face (m, panel space), index = button index in the logs.
-        //which effect each button triggers comes with the effects layer
         var buttons = new List<Json>();
         if (trials.panel != null)
             for (int i = 0; i < trials.panel.EffectButtons.Length; i++)
@@ -330,7 +357,15 @@ public class SessionLogger : MonoBehaviour
                 Vector3 p = trials.panel.EffectButtons[i].transform.localPosition;
                 buttons.Add(new Json().Add("index", i).Add("x", (float)Math.Round(p.x, 4)).Add("y", (float)Math.Round(p.y, 4)));
             }
-        return j.Add("buttonPositions", buttons).Add("buttonEffects", (string)null);
+        //which effect each button triggers (index into "effects"; -1 = no effect)
+        var buttonEffects = new List<int>();
+        for (int b = 0; b < c.effectButtons; b++)
+        {
+            int found = -1;
+            for (int e = 0; e < effects.Length; e++) if (effects[e] != null && effects[e].buttonIndex == b) { found = e; break; }
+            buttonEffects.Add(found);
+        }
+        return j.Add("buttonPositions", buttons).Add("buttonEffects", buttonEffects);
     }
 
     Json CameraInfo()
@@ -365,6 +400,25 @@ public class SessionLogger : MonoBehaviour
                 .Add("simSpeed", p.simSpeed)
                 .Add("stepsPerTick", p.StepsPerTick(clock.tickLength))
                 .Add("position", new Json().Add("x", pos.x).Add("y", pos.y).Add("z", pos.z));
+        }
+    }
+
+    IEnumerable<Json> EffectInfo()
+    {
+        for (int i = 0; i < effects.Length; i++)
+        {
+            LabEffect e = effects[i];
+            if (e == null) { yield return null; continue; }
+            var j = new Json()
+                .Add("index", i)
+                .Add("effect", e.EffectName)
+                .Add("path", TrialController.HierarchyPath(e.transform))
+                .Add("button", e.buttonIndex)
+                .Add("testOn", e.testOn)
+                .Add("seed", e.seed)
+                .Add("newSeedEachTrial", e.newSeedEachTrial);
+            e.LogInfo(j);
+            yield return j;
         }
     }
 

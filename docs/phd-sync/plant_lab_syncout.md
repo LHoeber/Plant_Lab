@@ -1,5 +1,5 @@
 # Plant_Lab sync-out (written by Claude Code)
-last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-24
+last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-25
 
 ## Current state (max ~10 lines, overwritten at each sync out)
 - Unity 6000.5.10f1, URP, WebGL tablet target. One terrarium with one procedural plant (L-system development on the
@@ -7,7 +7,8 @@ last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-24
 - Control panel: generated at Play start from a PanelConfig (buttons, trials, max on, T) and a PanelLayout (positions),
   simple placeholder blocks for now (Blender parts can replace them). Trial workflow implemented (TrialController):
   select (max 2, FIFO) -> shutter -> Start -> camera feed + timer -> camera offline -> next LED row.
-- Not built yet: plant responses to the buttons (effects layer, hidden state), lab template with several specimens,
+- Effects layer started: LabEffect base (button per session, testOn, seeded, lockstep, logged); first effect BugSwarm.
+- Not built yet: plant responses to the buttons (hidden state), lab template with several specimens,
   replay renderer, online deployment (plan: WebGL + JATOS + Prolific), agent interface.
 - Logging v1 (SessionLogger, JSON Lines per session) and a deterministic trial world (TickClock lockstep) work locally. Classic plant development still switchable (to be removed).
 - Cactus: segments in the plant simulation (growth, children at areoles after X % size, flowers, glass/segment
@@ -19,6 +20,13 @@ last_sync_out: 2026-10-26 | transferred to claude.ai log: 2026-11-24
   stop at maxDensity). Next: surface adhesion outside soil (shared with climbers), substrate shaders.
 
 ## New entries, not yet transferred (newest first, 2 to 4 lines each)
+- 2026-11-27: Bug swarm (first button effect). LabEffect base: on = its button (buttonIndex, per session) selected for
+  the trial, or testOn; steps in new TickClock.Substepped (lockstep), seed per trial logged. BugSwarm: level index into
+  levelCounts (default 0/3/8), every changeEveryTicks one up (pUp .45) / down (pDown .45), off = 0; bugs from a planned
+  sequence in blocks of blockSize per type (Fixed / Changing = random other type per block), leave FIFO via the vent.
+  Flight: steer to random target with max turn rate (overshoot = circling), separation, area box; no physics. Wings:
+  BotanicLab/BugWing vertex-shader flap on _LabTime (tick time, not _Time). Logs: ticks effects[] (level, present,
+  leaving, type runs, hash), trials effects (on, seed), session effects + buttonEffects. Headless: same seed identical.
 - 2026-11-24: Logging v1 + determinism. SessionLogger writes SessionLogs/<participant>_s<n>_<utc>/: session.json,
   trials.jsonl, ticks.jsonl (per tick in trials: action, view, per-plant summary + state hash, physics hash, lamps),
   events.jsonl, start/end JPEGs. TickClock now steps plants + physics in lockstep (25 substeps/tick, Physics Script
